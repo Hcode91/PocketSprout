@@ -75,6 +75,22 @@ Java_com_hcode91_didjdroid_Native_saveNand(JNIEnv* env, jclass, jstring jpath) {
     return ok ? JNI_TRUE : JNI_FALSE;
 }
 
+JNIEXPORT jstring JNICALL
+Java_com_hcode91_didjdroid_Native_loadCart(JNIEnv* env, jclass, jstring jpath) {
+    if (!g_sys) return env->NewStringUTF("emulator not started");
+    const char* p = env->GetStringUTFChars(jpath, nullptr);
+    std::string path(p);
+    env->ReleaseStringUTFChars(jpath, p);
+    std::string err;
+    if (!g_sys->load_cart(path, &err)) return env->NewStringUTF(err.c_str());
+    return env->NewStringUTF("");
+}
+
+JNIEXPORT void JNICALL
+Java_com_hcode91_didjdroid_Native_ejectCart(JNIEnv*, jclass) {
+    if (g_sys) g_sys->eject_cart();
+}
+
 JNIEXPORT void JNICALL
 Java_com_hcode91_didjdroid_Native_reset(JNIEnv*, jclass) {
     if (g_sys) g_sys->reset();

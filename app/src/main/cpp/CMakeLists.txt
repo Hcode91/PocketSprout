@@ -6,7 +6,8 @@ add_library(didjdroid SHARED
     ${CORE}/arm926.cpp
     ${CORE}/didj.cpp
     ${CORE}/hle.cpp
-    ${CORE}/gles.cpp)
+    ${CORE}/gles.cpp
+    ${CORE}/cart.cpp)
 target_include_directories(didjdroid PRIVATE ${CORE})
 target_compile_options(didjdroid PRIVATE -O3 -fexceptions -Wall -Wno-misleading-indentation)
 target_link_libraries(didjdroid log)

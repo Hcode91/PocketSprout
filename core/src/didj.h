@@ -47,6 +47,10 @@ private:
     void decode_addr();
 };
 
+// cart.cpp
+bool is_fat_image(const std::vector<u8>& d);
+bool build_cart_nand(const std::vector<u8>& fat, NandChip& chip, std::string* err);
+
 class Didj : public Bus {
 public:
     Didj();
@@ -147,6 +151,8 @@ private:
     // ---- UART0 ----
     u16 uart_regs[0x20] = {};
     u32 uart_clkenb = 0, uart_clkgen = 0;
+    u8 uart_int_enb = 0, uart_int_pend = 0;   // INTCON (+0x18): enables [7:4], pending [3:0]
+    void uart_update_irq();
 
     // ---- NAND controller (MCU_S) ----
     u32 mcus_regs[0x100 / 4] = {};

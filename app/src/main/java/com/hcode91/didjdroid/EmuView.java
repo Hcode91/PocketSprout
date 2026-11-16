@@ -181,10 +181,12 @@ public class EmuView extends View {
     private void showMenu() {
         new AlertDialog.Builder(getContext())
                 .setTitle("DidjDroid")
-                .setItems(new String[] {"Load NAND dump", "Reset", "Show serial console"}, (d, which) -> {
-                    if (which == 0) act.pickNand();
-                    else if (which == 1) act.resetEmu();
-                    else act.showConsole();
+                .setItems(new String[] {"Insert cartridge", "Eject cartridge", "Reset", "Show serial console", "Load NAND dump"}, (d, which) -> {
+                    if (which == 0) act.pickCart();
+                    else if (which == 1) act.ejectCart();
+                    else if (which == 2) act.resetEmu();
+                    else if (which == 3) act.showConsole();
+                    else act.pickNand();
                 }).show();
     }
 }

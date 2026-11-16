@@ -14,7 +14,8 @@ of the LF1000 (MagicEyes Pollux) system-on-chip. It boots the real Didj firmware
 | Display: MLC 2D RGB layers | Working: health warning + LeapFrog copyright screens render |
 | Audio | PCM sent to the audio block is captured and played (untested on device) |
 | 3D graphics (OpenGL ES) | **Working via HLE.** Calls into LeapFrog's `libopengles_lite.so` are trapped and run by a built-in OpenGL ES 1.1 software renderer (`gles.cpp`); the Didj menus render |
-| Cartridges | Not yet. The firmware expects raw cart NAND; FAT32 "Cartridge" images need converting |
+| Cartridges | **Working.** FAT cart images (e.g. `NLR` inside a cart zip) are wrapped in UBI on a virtual cart NAND chip (`cart.cpp`); raw cart NAND dumps also load. Didji Racing: Tiki Tropics boots and plays |
+| Serial console | UART with TX interrupts, so userspace logging works (it used to block games) |
 | Speed | Interpreter only. Boot is CPU-heavy; menus use ~12% of the emulated CPU thanks to the GL HLE |
 
 ## Using it
@@ -22,8 +23,10 @@ of the LF1000 (MagicEyes Pollux) system-on-chip. It boots the real Didj firmware
 1. Build the APK (GitHub Actions → *Build* → artifact `DidjDroid-apk`).
 2. On first launch tap the screen and choose your Didj NAND dump
    (`didj_29f2g08aac_2cda.bin`, 276,824,064 bytes = 256 MB + spare area). It's copied into app storage.
-3. Controls: on-screen D-pad, A/B, L/R, Home, Hint, Pause; gamepads and keyboards work too.
-4. **MENU** → *Show serial console* displays the Linux boot log, which is useful for bug reports.
+3. To play a game: **MENU → Insert cartridge** and pick the cart zip / image. The Didj restarts with it inserted;
+   it appears under *My Games*. The cartridge stays inserted until you choose *Eject cartridge*.
+4. Controls: on-screen D-pad, A/B, L/R, Home, Hint, Pause; gamepads and keyboards work too.
+5. **MENU** → *Show serial console* displays the Linux boot log, which is useful for bug reports.
 
 NAND writes (profiles, settings) are saved back to the app's copy when the app is paused.
 

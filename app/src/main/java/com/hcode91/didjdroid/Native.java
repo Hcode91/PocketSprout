@@ -17,5 +17,8 @@ public final class Native {
     public static native int readAudio(short[] buf);
     public static native boolean saveNand(String path);
     public static native void reset();
+    /** Loads a cartridge (FAT image of the cart volume, or raw NAND dump). Empty string = OK. */
+    public static native String loadCart(String path);
+    public static native void ejectCart();
     public static native String console();
 }

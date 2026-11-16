@@ -32,7 +32,8 @@ public:
     void reset();
     int find(const char* name);          // function id for a symbol name (-1 = unknown)
     bool call(int id);                   // run HLE function; true if handled
-    bool passthrough = false;            // debug: log calls but run original code
+    bool passthrough = false;
+    void clear_counts() { call_counts.assign(call_counts.size(), 0); }            // debug: log calls but run original code
     Hle* hle;
 
     // Render target (host side), presented to the guest framebuffer on eglSwapBuffers

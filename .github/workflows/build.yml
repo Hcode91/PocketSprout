@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build desktop runner and CPU test library
         run: |
-          g++ -O2 -std=c++17 -o didjcli tools/didjcli.cpp core/src/didj.cpp core/src/arm926.cpp core/src/hle.cpp core/src/gles.cpp
+          g++ -O2 -std=c++17 -o didjcli tools/didjcli.cpp core/src/didj.cpp core/src/arm926.cpp core/src/hle.cpp core/src/gles.cpp core/src/cart.cpp
           g++ -O2 -std=c++17 -shared -fPIC -o libcputest.so tests/cpu_testlib.cpp core/src/arm926.cpp
       - name: CPU differential fuzz test (vs Unicorn ARM926)
         run: |

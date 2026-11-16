@@ -1,26 +1,45 @@
 // DidjDroid desktop test runner.
 // Usage: didjcli <nand.bin> [-c cart] [-f frames] [-o screenshot.ppm] [-t tracefile] [-u max_unknown]
 #include "../core/src/didj.h"
+#include "../core/src/gles.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
+#include <algorithm>
 
 using namespace didj;
 
 static FILE* trace_f = nullptr;
+#include <map>
+static std::map<u32, u64> pc_hist;
+static void hist_hook(ARM926* cpu, u32 pc, void*) { pc_hist[(pc & ~0x3Fu) | ((cpu->cpsr & 0x1F) == 0x10 ? 1 : 0)]++; }
 static void trace(ARM926* cpu, u32 pc, void*) {
     fprintf(trace_f, "%08X %c\n", pc, cpu->in_thumb() ? 'T' : 'A');
 }
 
 static int sys_log_frame = -1, cur_frame = 0;
+static Didj* g_sys = nullptr;
 static u32 dump_at = 0;
-static void swi_log(ARM926* cpu, u32 pc, u32 imm, void*) {
-    if (sys_log_frame < 0 || cur_frame < sys_log_frame || cur_frame > sys_log_frame + 5) return;
+struct LastSys { int frame; u32 nr, r0, r1, r2, pc, ttb; std::string extra; };
+static std::map<u64, LastSys> last_sys;
+static void swi_log(ARM926* cpu, u32 pc, u32 imm, void*);
+static void track_sys(ARM926* cpu, u32 pc, u32 imm) {
     if ((cpu->cpsr & 0x1F) != 0x10) return;
     u32 nr = imm >= 0x900000 ? imm - 0x900000 : cpu->r[7];
-    fprintf(stderr, "SYS f%d pc=%08X nr=%u r0=%08X r1=%08X r2=%08X\n", cur_frame, pc, nr, cpu->r[0], cpu->r[1], cpu->r[2]);
+    u64 key = ((u64)cpu->cp15_ttb << 32) | (cpu->r[13] >> 16);
+    LastSys ls{cur_frame, nr, cpu->r[0], cpu->r[1], cpu->r[2], pc, cpu->cp15_ttb, ""};
+    if ((nr == 5) && g_sys) ls.extra = g_sys->hle->read_str(cpu->r[0]);
+    last_sys[key] = ls;
+}
+static void swi_log(ARM926* cpu, u32 pc, u32 imm, void*) {
+    if (sys_log_frame < 0 || cur_frame < sys_log_frame || cur_frame > sys_log_frame + (getenv("SYSWIN") ? atoi(getenv("SYSWIN")) : 5)) return;
+    if ((cpu->cpsr & 0x1F) != 0x10) return;
+    u32 nr = imm >= 0x900000 ? imm - 0x900000 : cpu->r[7];
+    std::string extra;
+    if ((nr == 5 || nr == 106 || nr == 195 || nr == 33) && g_sys) extra = " \"" + g_sys->hle->read_str(cpu->r[0]) + "\"";
+    fprintf(stderr, "SYS f%d pc=%08X nr=%u r0=%08X r1=%08X r2=%08X%s\n", cur_frame, pc, nr, cpu->r[0], cpu->r[1], cpu->r[2], extra.c_str());
 }
 
 int main(int argc, char** argv) {
@@ -45,11 +64,12 @@ int main(int argc, char** argv) {
         else if (a == "-y" && i + 1 < argc) sys_log_frame = atoi(argv[++i]);
     }
     Didj d;
+    g_sys = &d;
     d.log_unknown = maxunk;
     std::string err;
     if (!d.load_nand(nand, &err)) { fprintf(stderr, "NAND: %s\n", err.c_str()); return 1; }
     if (!cart.empty() && !d.load_cart(cart, &err)) { fprintf(stderr, "cart: %s\n", err.c_str()); return 1; }
-    d.on_syscall = [](ARM926* c, u32 pc, u32 imm) { swi_log(c, pc, imm, nullptr); };
+    d.on_syscall = [](ARM926* c, u32 pc, u32 imm) { track_sys(c, pc, imm); swi_log(c, pc, imm, nullptr); };
     if (getenv("GL_LOG")) d.hle->log_calls = true;
     d.on_uart = [](char c) { fputc(c, stdout); fflush(stdout); };
     if (!tracefile.empty()) { trace_f = fopen(tracefile.c_str(), "w"); d.cpu->trace_hook = trace; }
@@ -68,6 +88,15 @@ int main(int argc, char** argv) {
         for (auto& p : presses) if (f >= p.frame && f < p.frame + 8) mask |= p.mask;
         d.set_buttons(mask);
         cur_frame = f;
+        if (getenv("GL_LOG_FROM") && f == atoi(getenv("GL_LOG_FROM"))) { d.hle->log_calls = true; d.hle->gl->clear_counts(); }
+        if (getenv("PCHIST") && f == atoi(getenv("PCHIST"))) d.cpu->trace_hook = hist_hook;
+        if (getenv("PCHIST") && f == atoi(getenv("PCHIST")) + 10) {
+            d.cpu->trace_hook = nullptr;
+            std::vector<std::pair<u64, u32>> v;
+            for (auto& kv : pc_hist) v.push_back({kv.second, kv.first});
+            std::sort(v.rbegin(), v.rend());
+            for (size_t i = 0; i < v.size() && i < 25; i++) fprintf(stderr, "HIST %08X%s %llu\n", v[i].second & ~1u, (v[i].second & 1) ? "u" : "k", (unsigned long long)v[i].first);
+        }
         if (sys_log_frame >= 0 && f == sys_log_frame) d.log_user_io = 3000;
         d.run_frame();
         if (shot_every && !out.empty() && (f + 1) % shot_every == 0) {
@@ -88,6 +117,11 @@ int main(int argc, char** argv) {
         fclose(o);
     }
     if (trace_f) fclose(trace_f);
+    if (getenv("THREADS")) for (auto& kv : last_sys) {
+        const LastSys& l = kv.second;
+        fprintf(stderr, "THREAD ttb=%08X sp=%04Xxxxx last syscall f%d nr=%u r0=%08X r1=%08X r2=%08X pc=%08X %s\n", l.ttb,
+                (unsigned)(kv.first & 0xFFFF), l.frame, l.nr, l.r0, l.r1, l.r2, l.pc, l.extra.c_str());
+    }
     if (!dumpfile.empty()) { // dump physical RAM
         FILE* o = fopen(dumpfile.c_str(), "wb");
         for (u32 a = 0; a < Didj::RAM_SIZE; a += 4096) fwrite(d.page_ptr(a), 1, 4096, o);

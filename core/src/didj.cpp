@@ -189,10 +189,31 @@ bool Didj::load_nand(const std::string& path, std::string* err) {
 }
 
 bool Didj::load_cart(const std::string& path, std::string* err) {
-    return nand_cart.load(path, err);
+    // Accept either a raw cart NAND dump or a FAT filesystem image of the cart's UBI volume.
+    FILE* f = fopen(path.c_str(), "rb");
+    if (!f) { if (err) *err = "cannot open " + path; return false; }
+    std::vector<u8> head(512);
+    size_t n = fread(head.data(), 1, 512, f);
+    head.resize(n);
+    bool fat = is_fat_image(head);
+    if (fat) {
+        fseek(f, 0, SEEK_END);
+        long sz = ftell(f);
+        fseek(f, 0, SEEK_SET);
+        std::vector<u8> img((size_t)sz);
+        bool ok = fread(img.data(), 1, sz, f) == (size_t)sz;
+        fclose(f);
+        if (!ok) { if (err) *err = "read error"; return false; }
+        if (!build_cart_nand(img, nand_cart, err)) return false;
+    } else {
+        fclose(f);
+        if (!nand_cart.load(path, err)) return false;
+    }
+    gpio_update_inputs();
+    return true;
 }
 
-void Didj::eject_cart() { nand_cart.data.clear(); nand_cart.num_pages = 0; }
+void Didj::eject_cart() { nand_cart.data.clear(); nand_cart.num_pages = 0; gpio_update_inputs(); }
 
 void Didj::reset() {
     cpu->reset();
@@ -208,6 +229,7 @@ void Didj::reset() {
     for (auto& g : gpio) g = GpioPort();
     alive_gpio = 0; alive_scratch = 0; alive_pwrgate = 0;
     memset(uart_regs, 0, sizeof uart_regs);
+    uart_int_enb = uart_int_pend = 0;
     memset(mcus_regs, 0, sizeof mcus_regs);
     nf_control = (1u << 5) | (1u << 9);    // NAND boot, ready
     memset(mcuy_regs, 0, sizeof mcuy_regs);
@@ -301,6 +323,11 @@ void Didj::irq_update() {
     u64 active = ic_pend & ~ic_mask;
     cpu->set_irq((active & ~ic_mode) != 0);
     cpu->set_fiq((active & ic_mode) != 0);
+}
+
+void Didj::uart_update_irq() {
+    bool lvl = (uart_int_pend & (uart_int_enb >> 4) & 0x0F) != 0;
+    irq_set(IRQ_UART0, lvl);
 }
 
 // ---------------------------------------------------------------------------
@@ -765,6 +792,7 @@ u32 Didj::io_read(u32 pa, int size) {
             case 0x08: return 0x6;          // TX buffer + transmitter empty
             case 0x0C: return 0;            // FIFO counts
             case 0x12: return 0;
+            case 0x18: return (u32)(uart_int_enb | uart_int_pend);
             case 0x40: return uart_clkenb;
             case 0x44: return uart_clkgen;
             }
@@ -916,6 +944,15 @@ void Didj::io_write(u32 pa, u32 v, int size) {
             if (r == 0x10) {
                 char c = (char)(v & 0xFF);
                 if (on_uart) on_uart(c); else fputc(c, stdout);
+                uart_int_pend |= 0x01;             // transmitted instantly: TX holding register empty
+                uart_update_irq();
+                return;
+            }
+            if (r == 0x18) {
+                uart_int_pend &= (u8)~(v & 0x0F);  // write 1 clears pending
+                uart_int_enb = (u8)(v & 0xF0);
+                if (uart_int_enb & 0x10) uart_int_pend |= 0x01;   // TX is always empty
+                uart_update_irq();
                 return;
             }
             if (r == 0x40) { uart_clkenb = v; return; }
