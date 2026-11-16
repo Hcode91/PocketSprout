@@ -97,6 +97,7 @@ public:
     Hle* hle;
     std::function<void(ARM926*, u32 pc, u32 imm)> on_syscall;   // debug
     u64 frame_count = 0;
+    double prof_cpu = 0, prof_dev = 0, prof_render = 0, prof_gl = 0;   // seconds (debug)
     int log_unknown = 200;      // max unknown-register log lines
     int log_user_io = 0;        // log I/O accesses made from user mode (mmap'd registers)
 

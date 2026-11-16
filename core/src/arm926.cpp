@@ -86,6 +86,7 @@ void ARM926::set_user_reg(int n, u32 v) {
 // MMU
 // ---------------------------------------------------------------------------
 void ARM926::flush_tlb() {
+    stat_flushes++;
     for (int i = 0; i < TLB_SIZE; i++) tlb[i].valid = 0;
     fetch_tag = 0xFFFFFFFF;
     fetch_host = nullptr;
@@ -217,6 +218,7 @@ ARM926::TLBEntry* ARM926::translate(u32 va, bool write, bool user, bool fetch) {
     u32 fsr = 0;
     bool sec = false;
     TLBEntry ne;
+    stat_walks++;
     if (!walk(m, &ne, &fsr, &sec)) {
         if (fetch) throw MemFault{fsr, va};
         throw MemFault{fsr, va};
@@ -267,6 +269,13 @@ u32 ARM926::vread32(u32 va, bool user) {
     return bus->read32(e->pa_page + (va & 0xFFF));
 }
 u16 ARM926::vread16(u32 va, bool user) {
+    {
+        u32 m = (va < 0x02000000) ? (va | (cp15_fcse_pid & 0xFE000000)) : va;
+        const TLBEntry& e = tlb[(m >> 12) & (TLB_SIZE - 1)];
+        if (!(va & 1) && e.valid == 1 && e.tag == (m >> 12) && e.host && (e.perm & (user ? 4 : 1))) {
+            u16 v; memcpy(&v, e.host + (va & 0xFFF), 2); return v;
+        }
+    }
     ALIGN_CHECK(va, 1);
     va &= ~1u;
     TLBEntry* e = translate(va, false, user, false);
@@ -274,6 +283,13 @@ u16 ARM926::vread16(u32 va, bool user) {
     return bus->read16(e->pa_page + (va & 0xFFF));
 }
 u8 ARM926::vread8(u32 va, bool user) {
+    {
+        u32 m = (va < 0x02000000) ? (va | (cp15_fcse_pid & 0xFE000000)) : va;
+        const TLBEntry& e = tlb[(m >> 12) & (TLB_SIZE - 1)];
+        if (e.valid == 1 && e.tag == (m >> 12) && e.host && (e.perm & (user ? 4 : 1))) {
+            return e.host[va & 0xFFF];
+        }
+    }
     TLBEntry* e = translate(va, false, user, false);
     if (e->host) return e->host[va & 0xFFF];
     return bus->read8(e->pa_page + (va & 0xFFF));
@@ -293,6 +309,13 @@ void ARM926::vwrite32(u32 va, u32 v, bool user) {
     bus->write32(e->pa_page + (va & 0xFFF), v);
 }
 void ARM926::vwrite16(u32 va, u16 v, bool user) {
+    {
+        u32 m = (va < 0x02000000) ? (va | (cp15_fcse_pid & 0xFE000000)) : va;
+        const TLBEntry& e = tlb[(m >> 12) & (TLB_SIZE - 1)];
+        if (!(va & 1) && e.valid == 1 && e.tag == (m >> 12) && e.host && (e.perm & (user ? 8 : 2))) {
+            memcpy(e.host + (va & 0xFFF), &v, 2); return;
+        }
+    }
     ALIGN_CHECK(va, 1);
     va &= ~1u;
     TLBEntry* e = translate(va, true, user, false);
@@ -300,6 +323,13 @@ void ARM926::vwrite16(u32 va, u16 v, bool user) {
     bus->write16(e->pa_page + (va & 0xFFF), v);
 }
 void ARM926::vwrite8(u32 va, u8 v, bool user) {
+    {
+        u32 m = (va < 0x02000000) ? (va | (cp15_fcse_pid & 0xFE000000)) : va;
+        const TLBEntry& e = tlb[(m >> 12) & (TLB_SIZE - 1)];
+        if (e.valid == 1 && e.tag == (m >> 12) && e.host && (e.perm & (user ? 8 : 2))) {
+            e.host[va & 0xFFF] = v; return;
+        }
+    }
     TLBEntry* e = translate(va, true, user, false);
     if (e->host) { e->host[va & 0xFFF] = v; return; }
     bus->write8(e->pa_page + (va & 0xFFF), v);
@@ -308,6 +338,7 @@ void ARM926::vwrite8(u32 va, u8 v, bool user) {
 #define FORCE_INLINE inline __attribute__((always_inline))
 
 u32 ARM926::fetch32(u32 va) {
+    stat_slowfetch++;
     bool user = !privileged();
     u32 page = va >> 12;
     if (page == fetch_tag && user == fetch_user && fetch_host) {
@@ -361,6 +392,7 @@ void ARM926::raise_undefined() {
 }
 
 void ARM926::data_abort(const MemFault& f) {
+    stat_aborts++;
     cp15_dfsr = f.fsr & 0xFF;
     cp15_far = f.addr;
     exception(0x10, MODE_ABT, cur_pc + 8, false);
@@ -372,6 +404,7 @@ void ARM926::prefetch_abort(const MemFault& f) {
 }
 
 void ARM926::check_interrupts() {
+    stat_irqs++;
     if (fiq_line && !(cpsr & FLAG_F)) {
         wfi = false;
         exception(0x1C, MODE_FIQ, r[15] + 4, true);
@@ -451,16 +484,23 @@ s64 ARM926::run(s64 cycles) {
         try {
             if (cpsr & FLAG_T) {
                 u16 insn;
+                if ((cur_pc >> 12) == fetch_tag && fetch_host && fetch_user == !privileged()) {
+                    memcpy(&insn, fetch_host + (cur_pc & 0xFFE), 2);
+                } else
                 try { insn = fetch16(cur_pc); }
                 catch (const MemFault& f) { prefetch_abort(f); done++; continue; }
                 if (trace_hook) trace_hook(this, cur_pc, trace_user);
                 r[15] = cur_pc + 4;
+                stat_thumb++;
                 exec_thumb(insn);
                 if (!pc_written) r[15] = cur_pc + 2;
             } else {
                 u32 insn;
                 if ((cur_pc >> 12) == fetch_tag && fetch_host && fetch_user == !privileged()) {
                     memcpy(&insn, fetch_host + (cur_pc & 0xFFC), 4);
+                } else if (const TLBEntry* te = tlb_fast(cur_pc, !privileged())) {
+                    fetch_tag = cur_pc >> 12; fetch_host = te->host; fetch_user = !privileged();
+                    memcpy(&insn, te->host + (cur_pc & 0xFFC), 4);
                 } else {
                     try { insn = fetch32(cur_pc); }
                     catch (const MemFault& f) { prefetch_abort(f); done++; continue; }

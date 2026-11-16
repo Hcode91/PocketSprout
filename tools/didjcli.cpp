@@ -7,6 +7,7 @@
 #include <cstring>
 #include <string>
 #include <vector>
+#include <chrono>
 #include <algorithm>
 
 using namespace didj;
@@ -102,6 +103,21 @@ int main(int argc, char** argv) {
         if (shot_every && !out.empty() && (f + 1) % shot_every == 0) {
             char b[32]; snprintf(b, sizeof b, "_%05d.ppm", f + 1);
             save(out + b);
+        }
+        static auto t0 = std::chrono::steady_clock::now();
+        static u64 i0 = 0;
+        if (f % 60 == 59) {
+            auto t1 = std::chrono::steady_clock::now();
+            double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+            fprintf(stderr, "[time] frames %d-%d: %.0f ms host (%.0f%% of real time), %.1fM insns\n", f - 59, f, ms, 1000.0 / ms * 100, (d.cpu->insn_count - i0) / 1e6);
+            t0 = t1; i0 = d.cpu->insn_count;
+            ARM926* c = d.cpu;
+            fprintf(stderr, "[prof] cpu=%.0fms (gl=%.0fms) devices=%.0fms render=%.0fms\n", d.prof_cpu * 1000, d.prof_gl * 1000, d.prof_dev * 1000, d.prof_render * 1000);
+            d.prof_cpu = d.prof_gl = d.prof_dev = d.prof_render = 0;
+            fprintf(stderr, "[stat] walks=%llu aborts=%llu flushes=%llu irqs=%llu thumb=%llu slowfetch=%llu\n",
+                (unsigned long long)c->stat_walks, (unsigned long long)c->stat_aborts, (unsigned long long)c->stat_flushes,
+                (unsigned long long)c->stat_irqs, (unsigned long long)c->stat_thumb, (unsigned long long)c->stat_slowfetch);
+            c->stat_walks = c->stat_aborts = c->stat_flushes = c->stat_irqs = c->stat_thumb = c->stat_slowfetch = 0;
         }
         if (f % 60 == 59) fprintf(stderr, "[frame %d] pc=%08X mode=%02X insns=%llu\n", f + 1, d.cpu->r[15], d.cpu->cpsr & 0x1F,
                                   (unsigned long long)d.cpu->insn_count);

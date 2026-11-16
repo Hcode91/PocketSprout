@@ -74,6 +74,7 @@ public:
 
     u64 total_cycles = 0;
     u64 insn_count = 0;
+    u64 stat_walks = 0, stat_aborts = 0, stat_flushes = 0, stat_irqs = 0, stat_thumb = 0, stat_slowfetch = 0;
 
     // Debug hooks
     void (*trace_hook)(ARM926* cpu, u32 pc, void* user) = nullptr;
@@ -137,6 +138,13 @@ private:
     bool fetch_user = false;
 
     TLBEntry* translate(u32 va, bool write, bool user, bool fetch);
+    // Cached RAM translation with read permission, or null (no side effects)
+    inline const TLBEntry* tlb_fast(u32 va, bool user) const {
+        u32 m = (va < 0x02000000) ? (va | (cp15_fcse_pid & 0xFE000000)) : va;
+        const TLBEntry& e = tlb[(m >> 12) & (TLB_SIZE - 1)];
+        if (e.valid == 1 && e.tag == (m >> 12) && e.host && (e.perm & (user ? 4 : 1))) return &e;
+        return nullptr;
+    }
     bool walk(u32 mva, TLBEntry* e, u32* fsr, bool* is_section);
     inline u32 mva(u32 va) const {
         return (va < 0x02000000) ? (va | (cp15_fcse_pid & 0xFE000000)) : va;

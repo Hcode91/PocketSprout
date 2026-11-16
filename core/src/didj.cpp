@@ -1,8 +1,11 @@
 // DidjDroid - LF1000 system emulation
 #include "didj.h"
 #include <cstdio>
+#include <algorithm>
 #include <cstdlib>
 #include <ctime>
+#include <chrono>
+static inline double now_s() { return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
 
 namespace didj {
 
@@ -1046,22 +1049,23 @@ void Didj::render() {
         u32 bpp = hstride > 0 && hstride <= 4 ? (u32)hstride : 2;
         bool tpen = ctrl & 1, blend = ctrl & 4;
         u32 lalpha = ((tp >> 28) & 0xF) * 17;
-        for (int y = top; y <= bottom && y < SCREEN_H; y++) {
-            if (y < 0) continue;
-            u32 rowaddr = addr + (u32)((y - top) * vstride);
-            for (int x = left; x <= right && x < SCREEN_W; x++) {
-                if (x < 0) continue;
-                u32 pa = rowaddr + (u32)((x - left) * hstride);
-                u8* pg = page_ptr(pa & ~0xFFFu);
-                if (!pg) { pg = page_ptr((pa & ~0xFFFu) ^ 0x80000000u); if (!pg) continue; }
-                u8 tmp[4];
-                const u8* px = pg + (pa & 0xFFF);
-                if ((pa & 0xFFF) + bpp > 0x1000) { for (u32 k = 0; k < bpp; k++) tmp[k] = read8(pa + k); px = tmp; }
+        int xa = std::max(left, 0), xb = std::min(right, SCREEN_W - 1);
+        if (xa > xb) continue;
+        for (int y = std::max(top, 0); y <= bottom && y < SCREEN_H; y++) {
+            u32 rowaddr = addr + (u32)((y - top) * vstride) + (u32)((xa - left) * hstride);
+            u32 len = (u32)(xb - xa + 1) * bpp;
+            // RAM is contiguous on the host, so resolve the row once
+            u8* pg = page_ptr(rowaddr & ~0xFFFu);
+            if (!pg) { pg = page_ptr((rowaddr & ~0xFFFu) ^ 0x80000000u); if (!pg) continue; }
+            const u8* px = pg + (rowaddr & 0xFFF);
+            if (px + len > ram + RAM_SIZE) continue;
+            u32* drow = &fb[y * SCREEN_W];
+            for (int x = xa; x <= xb; x++, px += hstride) {
                 u32 a = 255;
                 u32 c = conv_pixel(px, fmt, bpp, palette[l], &a);
                 if (tpen && ((c & 0xFFFFFF) == (tp & 0xFFFFFF))) continue;
                 if (blend) a = (fmt == 0x0653 || fmt == 0x3342 || fmt == 0x2211 || fmt == 0x1120 || fmt == 0x1003) ? a : lalpha;
-                u32& d = fb[y * SCREEN_W + x];
+                u32& d = drow[x];
                 if (a >= 255) d = c;
                 else if (a > 0) {
                     u32 dr = (d >> 16) & 0xFF, dg = (d >> 8) & 0xFF, db = d & 0xFF;
@@ -1125,13 +1129,19 @@ void Didj::run_frame() {
     while (done < frame) {
         u64 n = (frame - done < slice) ? frame - done : slice;
         // ARM926 averages ~1.5 cycles per instruction (cache/memory stalls)
+        double t0 = now_s();
         cpu->run((s64)(n * 2 / 3));
+        double t1 = now_s();
         timers_advance(n);
         dma_advance(n);
+        double t2 = now_s();
+        prof_cpu += t1 - t0; prof_dev += t2 - t1;
         cycles += n;
         done += n;
     }
+    double t3 = now_s();
     render();
+    prof_render += now_s() - t3;
     vsync();
     frame_count++;
 }

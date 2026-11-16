@@ -664,11 +664,76 @@ void GLES::draw_triangle(const Vtx& a, const Vtx& b, const Vtx& c) {
     clip_and_raster(tri, 3);
 }
 
+static inline bool depth_cmp(u32 f, float a, float b) {
+    switch (f) {
+    case 0x200: return false;
+    case 0x201: return a < b;
+    case 0x202: return a == b;
+    case 0x203: return a <= b;
+    case 0x204: return a > b;
+    case 0x205: return a != b;
+    case 0x206: return a >= b;
+    default: return true;
+    }
+}
+
+static inline float blend_factor(u32 f, int ch, const float* s, const float* d) {
+    switch (f) {
+    case 0: return 0;
+    case 1: return 1;
+    case 0x300: return s[ch];
+    case 0x301: return 1 - s[ch];
+    case 0x302: return s[3];
+    case 0x303: return 1 - s[3];
+    case 0x304: return d[3];
+    case 0x305: return 1 - d[3];
+    case 0x306: return d[ch];
+    case 0x307: return 1 - d[ch];
+    case 0x308: return ch == 3 ? 1 : std::min(s[3], 1 - d[3]);
+    default: return 1;
+    }
+}
+
+// Per-triangle texture unit setup for the fast rasteriser
+struct TexUnitSel {
+    const u32* d; int w, h; u32 wmask, hmask; bool pot, linear, has_alpha, repeat_s, repeat_t;
+    u32 mode; const float* envc;
+};
+
+static inline u32 fetch_texel(const TexUnitSel& t, int x, int y) {
+    if (t.pot) {
+        x = t.repeat_s ? (x & (int)t.wmask) : (x < 0 ? 0 : (x >= t.w ? t.w - 1 : x));
+        y = t.repeat_t ? (y & (int)t.hmask) : (y < 0 ? 0 : (y >= t.h ? t.h - 1 : y));
+    } else {
+        if (t.repeat_s) { x %= t.w; if (x < 0) x += t.w; } else x = x < 0 ? 0 : (x >= t.w ? t.w - 1 : x);
+        if (t.repeat_t) { y %= t.h; if (y < 0) y += t.h; } else y = y < 0 ? 0 : (y >= t.h ? t.h - 1 : y);
+    }
+    return t.d[(size_t)y * t.w + x];
+}
+
+static inline u32 sample_fast(const TexUnitSel& t, float s, float tt) {
+    float u = s * t.w, v = tt * t.h;
+    if (!t.linear) return fetch_texel(t, (int)floorf(u), (int)floorf(v));
+    u -= 0.5f; v -= 0.5f;
+    int x0 = (int)floorf(u), y0 = (int)floorf(v);
+    int fx = (int)((u - x0) * 256.f), fy = (int)((v - y0) * 256.f);
+    u32 c00 = fetch_texel(t, x0, y0), c10 = fetch_texel(t, x0 + 1, y0);
+    u32 c01 = fetch_texel(t, x0, y0 + 1), c11 = fetch_texel(t, x0 + 1, y0 + 1);
+    if (c00 == c10 && c00 == c01 && c00 == c11) return c00;
+    u32 out = 0;
+    for (int ch = 0; ch < 32; ch += 8) {
+        int a0 = (c00 >> ch) & 0xFF, a1 = (c10 >> ch) & 0xFF, b0 = (c01 >> ch) & 0xFF, b1 = (c11 >> ch) & 0xFF;
+        int top = a0 * 256 + (a1 - a0) * fx, bot = b0 * 256 + (b1 - b0) * fx;
+        int val = (top * 256 + (bot - top) * fy + 32768) >> 16;
+        out |= (u32)(val < 0 ? 0 : val > 255 ? 255 : val) << ch;
+    }
+    return out;
+}
+
 void GLES::raster_triangle(const Vtx& A, const Vtx& B, const Vtx& C) {
     float area = (B.sx - A.sx) * (C.sy - A.sy) - (C.sx - A.sx) * (B.sy - A.sy);
     if (fabsf(area) < 1e-8f) return;
     int x0 = 0, y0 = 0, x1 = W - 1, y1 = H - 1;
-    // viewport/scissor clip (scissor in GL coords)
     if (enables & E_SCISSOR) {
         x0 = std::max(x0, scissor[0]); x1 = std::min(x1, scissor[0] + scissor[2] - 1);
         y0 = std::max(y0, H - (scissor[1] + scissor[3])); y1 = std::min(y1, H - 1 - scissor[1]);
@@ -680,42 +745,147 @@ void GLES::raster_triangle(const Vtx& A, const Vtx& B, const Vtx& C) {
     if (bx0 > bx1 || by0 > by1) return;
     float inv_area = 1.f / area;
 
-    // Texture LOD per triangle
-    float lod[2] = {0, 0};
+    // ---- per-triangle texture setup ----
+    TexUnitSel tu[2]; int ntex = 0; int tex_unit[2];
     for (int u = 0; u < 2; u++) {
         if (!tex_enabled[u]) continue;
         auto it = textures.find(bound_tex[u]);
-        if (it == textures.end() || it->second.w == 0) continue;
-        float tw = (float)it->second.w, th = (float)it->second.h;
+        if (it == textures.end() || it->second.w == 0 || it->second.levels.empty()) continue;
+        const Texture& t = it->second;
+        float tw = (float)t.w, th = (float)t.h;
         float ta = ((B.tc[u][0] - A.tc[u][0]) * tw) * ((C.tc[u][1] - A.tc[u][1]) * th) -
                    ((C.tc[u][0] - A.tc[u][0]) * tw) * ((B.tc[u][1] - A.tc[u][1]) * th);
         float ratio = fabsf(ta) / fabsf(area);
-        lod[u] = ratio > 0 ? 0.5f * log2f(ratio) : 0;
+        float lod = ratio > 0 ? 0.5f * log2f(ratio) : 0;
+        bool minify = lod > 0;
+        u32 filt = minify ? t.min_filter : t.mag_filter;
+        int L = 0;
+        if (minify && filt >= 0x2700 && filt <= 0x2703) {
+            L = (int)(lod + 0.5f);
+            int maxl = (int)t.levels.size() - 1;
+            while (maxl > 0 && t.levels[maxl].empty()) maxl--;
+            if (L > maxl) L = maxl;
+            filt = (filt == 0x2700 || filt == 0x2702) ? GL_NEAREST : GL_LINEAR;
+        }
+        if (t.levels[L].empty()) L = 0;
+        if (t.levels[L].empty()) continue;
+        TexUnitSel& s = tu[ntex];
+        s.d = t.levels[L].data(); s.w = t.lw[L]; s.h = t.lh[L];
+        s.pot = !(s.w & (s.w - 1)) && !(s.h & (s.h - 1));
+        s.wmask = s.w - 1; s.hmask = s.h - 1;
+        s.linear = filt == GL_LINEAR;
+        s.repeat_s = t.wrap_s == GL_REPEAT; s.repeat_t = t.wrap_t == GL_REPEAT;
+        s.has_alpha = t.has_alpha; s.mode = texenv[u].mode; s.envc = texenv[u].color;
+        tex_unit[ntex] = u;
+        ntex++;
     }
-    float zoff = 0;
-    if (enables & E_POLYOFF) zoff = poly_offset_units * (1.f / 65536.f);
+    const bool depth_test = enables & E_DEPTH, depth_write = depth_test && depth_mask;
+    const bool alpha_test = enables & E_ALPHA, blend = enables & E_BLEND, fog_on = enables & E_FOG;
+    const bool std_blend = blend && blend_src == 0x302 && blend_dst == 0x303;
+    const bool all_mask = color_mask[0] && color_mask[1] && color_mask[2];
+    const float zoff = (enables & E_POLYOFF) ? poly_offset_units * (1.f / 65536.f) : 0.f;
+    const bool persp = !(fabsf(A.invw - B.invw) < 1e-9f && fabsf(A.invw - C.invw) < 1e-9f);
+    const bool flat_col = A.col[0] == B.col[0] && A.col[0] == C.col[0] && A.col[1] == B.col[1] && A.col[1] == C.col[1] &&
+                          A.col[2] == B.col[2] && A.col[2] == C.col[2] && A.col[3] == B.col[3] && A.col[3] == C.col[3];
+
+    // barycentric derivatives along x
+    const float d0 = (B.sy - C.sy) * inv_area, d1 = (C.sy - A.sy) * inv_area, d2 = -d0 - d1;
+    const float eps = -1e-6f;
 
     for (int y = by0; y <= by1; y++) {
         float py = y + 0.5f;
-        for (int x = bx0; x <= bx1; x++) {
-            float px = x + 0.5f;
-            float w0 = ((B.sx - px) * (C.sy - py) - (C.sx - px) * (B.sy - py)) * inv_area;
-            float w1 = ((C.sx - px) * (A.sy - py) - (A.sx - px) * (C.sy - py)) * inv_area;
-            float w2 = 1.f - w0 - w1;
-            if (w0 < 0 || w1 < 0 || w2 < 0) {
-                // allow exact-edge pixels on one side (simple top-left approximation)
-                if (w0 < -1e-6f || w1 < -1e-6f || w2 < -1e-6f) continue;
-            }
+        float pxs = bx0 + 0.5f;
+        float w0s = ((B.sx - pxs) * (C.sy - py) - (C.sx - pxs) * (B.sy - py)) * inv_area;
+        float w1s = ((C.sx - pxs) * (A.sy - py) - (A.sx - pxs) * (C.sy - py)) * inv_area;
+        float w2s = 1.f - w0s - w1s;
+        // exact span: solve w_i(x) >= eps for x offset k from bx0
+        float klo = 0, khi = (float)(bx1 - bx0);
+        const float ws[3] = {w0s, w1s, w2s}, ds[3] = {d0, d1, d2};
+        bool empty = false;
+        for (int e = 0; e < 3; e++) {
+            if (ds[e] > 0) { float k = (eps - ws[e]) / ds[e]; if (k > klo) klo = k; }
+            else if (ds[e] < 0) { float k = (eps - ws[e]) / ds[e]; if (k < khi) khi = k; }
+            else if (ws[e] < eps) { empty = true; break; }
+        }
+        if (empty || klo > khi) continue;
+        int ka = (int)ceilf(klo), kb = (int)floorf(khi);
+        if (ka > kb) continue;
+        u32* crow = &color[(size_t)y * W];
+        float* zrow = &depth[(size_t)y * W];
+        for (int k = ka; k <= kb; k++) {
+            float w0 = w0s + d0 * k, w1 = w1s + d1 * k, w2 = 1.f - w0 - w1;
+            if (w0 < eps || w1 < eps || w2 < eps) continue;
+            int x = bx0 + k;
             float z = A.sz * w0 + B.sz * w1 + C.sz * w2 + zoff;
-            float iw = A.invw * w0 + B.invw * w1 + C.invw * w2;
-            float pw0 = A.invw * w0 / iw, pw1 = B.invw * w1 / iw, pw2 = C.invw * w2 / iw;
-            float col[4];
-            for (int i = 0; i < 4; i++) col[i] = A.col[i] * pw0 + B.col[i] * pw1 + C.col[i] * pw2;
-            float tc[2][4];
-            for (int u = 0; u < 2; u++) if (tex_enabled[u])
-                for (int i = 0; i < 2; i++) tc[u][i] = A.tc[u][i] * pw0 + B.tc[u][i] * pw1 + C.tc[u][i] * pw2;
-            float fog = A.fog * pw0 + B.fog * pw1 + C.fog * pw2;
-            shade_fragment(x, y, z, col, tc, fog, lod);
+            if (depth_test && !depth_cmp(depth_func, z, zrow[x])) continue;
+            float p0 = w0, p1 = w1, p2 = w2;
+            if (persp) {
+                float iw = A.invw * w0 + B.invw * w1 + C.invw * w2;
+                float r = 1.f / iw;
+                p0 = A.invw * w0 * r; p1 = B.invw * w1 * r; p2 = 1.f - p0 - p1;
+            }
+            float c[4];
+            if (flat_col) { c[0] = A.col[0]; c[1] = A.col[1]; c[2] = A.col[2]; c[3] = A.col[3]; }
+            else for (int i = 0; i < 4; i++) c[i] = A.col[i] * p0 + B.col[i] * p1 + C.col[i] * p2;
+            for (int n = 0; n < ntex; n++) {
+                int u = tex_unit[n];
+                const TexUnitSel& t = tu[n];
+                float s_ = A.tc[u][0] * p0 + B.tc[u][0] * p1 + C.tc[u][0] * p2;
+                float t_ = A.tc[u][1] * p0 + B.tc[u][1] * p1 + C.tc[u][1] * p2;
+                u32 tx = sample_fast(t, s_, t_);
+                const float k255 = 1.f / 255.f;
+                float tr = ((tx >> 16) & 0xFF) * k255, tg = ((tx >> 8) & 0xFF) * k255, tb = (tx & 0xFF) * k255, ta = (tx >> 24) * k255;
+                switch (t.mode) {
+                case GL_REPLACE: c[0] = tr; c[1] = tg; c[2] = tb; if (t.has_alpha) c[3] = ta; break;
+                case GL_DECAL: c[0] += (tr - c[0]) * ta; c[1] += (tg - c[1]) * ta; c[2] += (tb - c[2]) * ta; break;
+                case GL_BLEND_ENV:
+                    c[0] = c[0] * (1 - tr) + t.envc[0] * tr; c[1] = c[1] * (1 - tg) + t.envc[1] * tg;
+                    c[2] = c[2] * (1 - tb) + t.envc[2] * tb; c[3] *= ta; break;
+                case GL_ADD:
+                    c[0] = std::min(1.f, c[0] + tr); c[1] = std::min(1.f, c[1] + tg); c[2] = std::min(1.f, c[2] + tb); c[3] *= ta; break;
+                default: c[0] *= tr; c[1] *= tg; c[2] *= tb; c[3] *= ta; break;
+                }
+            }
+            if (fog_on) {
+                float f = A.fog * p0 + B.fog * p1 + C.fog * p2;
+                for (int i = 0; i < 3; i++) c[i] = c[i] * f + fog_color[i] * (1 - f);
+            }
+            if (alpha_test) {
+                float a = c[3], r = alpha_ref; bool pass;
+                switch (alpha_func) {
+                case 0x200: pass = false; break; case 0x201: pass = a < r; break;
+                case 0x202: pass = fabsf(a - r) < 1e-4f; break; case 0x203: pass = a <= r; break;
+                case 0x204: pass = a > r; break; case 0x205: pass = fabsf(a - r) >= 1e-4f; break;
+                case 0x206: pass = a >= r; break; default: pass = true; break;
+                }
+                if (!pass) continue;
+            }
+            u32& dst = crow[x];
+            if (std_blend) {
+                float a = clampf(c[3], 0, 1);
+                if (a <= (0.5f / 255.f)) { if (depth_write) zrow[x] = z; continue; }   // fully transparent
+                if (a < 1.f) {
+                    float ia = (1 - a) * (1.f / 255.f);
+                    c[0] = c[0] * a + ((dst >> 16) & 0xFF) * ia;
+                    c[1] = c[1] * a + ((dst >> 8) & 0xFF) * ia;
+                    c[2] = c[2] * a + (dst & 0xFF) * ia;
+                }
+            } else if (blend) {
+                float d[4] = {((dst >> 16) & 0xFF) / 255.f, ((dst >> 8) & 0xFF) / 255.f, (dst & 0xFF) / 255.f, 1.f};
+                float o[4];
+                for (int i = 0; i < 4; i++) o[i] = c[i] * blend_factor(blend_src, i, c, d) + d[i] * blend_factor(blend_dst, i, c, d);
+                memcpy(c, o, sizeof c);
+            }
+            u32 r = (u32)(clampf(c[0], 0, 1) * 255 + 0.5f), g = (u32)(clampf(c[1], 0, 1) * 255 + 0.5f), b = (u32)(clampf(c[2], 0, 1) * 255 + 0.5f);
+            if (all_mask) dst = 0xFF000000u | (r << 16) | (g << 8) | b;
+            else {
+                u32 nv = dst;
+                if (color_mask[0]) nv = (nv & 0xFF00FFFF) | (r << 16);
+                if (color_mask[1]) nv = (nv & 0xFFFF00FF) | (g << 8);
+                if (color_mask[2]) nv = (nv & 0xFFFFFF00) | b;
+                dst = nv | 0xFF000000u;
+            }
+            if (depth_write) zrow[x] = z;
         }
     }
 }
@@ -749,35 +919,7 @@ void GLES::raster_point(const Vtx& v) {
         }
 }
 
-static inline bool depth_cmp(u32 f, float a, float b) {
-    switch (f) {
-    case 0x200: return false;
-    case 0x201: return a < b;
-    case 0x202: return a == b;
-    case 0x203: return a <= b;
-    case 0x204: return a > b;
-    case 0x205: return a != b;
-    case 0x206: return a >= b;
-    default: return true;
-    }
-}
 
-static inline float blend_factor(u32 f, int ch, const float* s, const float* d) {
-    switch (f) {
-    case 0: return 0;
-    case 1: return 1;
-    case 0x300: return s[ch];
-    case 0x301: return 1 - s[ch];
-    case 0x302: return s[3];
-    case 0x303: return 1 - s[3];
-    case 0x304: return d[3];
-    case 0x305: return 1 - d[3];
-    case 0x306: return d[ch];
-    case 0x307: return 1 - d[ch];
-    case 0x308: return ch == 3 ? 1 : std::min(s[3], 1 - d[3]);
-    default: return 1;
-    }
-}
 
 void GLES::shade_fragment(int x, int y, float z, const float* in_col, const float tc[2][4], float fog, float lod[2]) {
     size_t pi = (size_t)y * W + x;
@@ -862,13 +1004,20 @@ void GLES::draw(u32 mode, const std::vector<u32>& idx) {
         g_snap[s].valid = true;
     }
     std::vector<Vtx> v(idx.size());
-    // cache transforms per unique index
-    std::map<u32, size_t> seen;
-    for (size_t i = 0; i < idx.size(); i++) {
-        auto it = seen.find(idx[i]);
-        if (it != seen.end()) { v[i] = v[it->second]; continue; }
-        transform(idx[i], v[i]);
-        seen[idx[i]] = i;
+    // cache transforms per unique index (flat table over the index range)
+    u32 mini = maxi;
+    for (u32 i : idx) mini = std::min(mini, i);
+    if (maxi - mini < 65536) {
+        static std::vector<int> slot;
+        slot.assign(maxi - mini + 1, -1);
+        for (size_t i = 0; i < idx.size(); i++) {
+            int& sl = slot[idx[i] - mini];
+            if (sl >= 0) { v[i] = v[sl]; continue; }
+            transform(idx[i], v[i]);
+            sl = (int)i;
+        }
+    } else {
+        for (size_t i = 0; i < idx.size(); i++) transform(idx[i], v[i]);
     }
     size_t n = v.size();
     switch (mode) {

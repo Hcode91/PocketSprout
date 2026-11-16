@@ -3,6 +3,7 @@
 #include "gles.h"
 #include "didj.h"
 #include <cstdio>
+#include <chrono>
 
 namespace didj {
 
@@ -179,7 +180,10 @@ bool Hle::on_hook(u32 pc) {
     }
     auto f = cur->funcs.find(pc);
     if (f == cur->funcs.end()) return false;
-    return gl->call(f->second);
+    auto t0 = std::chrono::steady_clock::now();
+    bool r = gl->call(f->second);
+    sys->prof_gl += std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    return r;
 }
 
 // Parse ELF dynamic symbol table from guest memory; register gl*/egl* entry points.
