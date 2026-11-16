@@ -1,4 +1,4 @@
-// DidjDroid - ARM926 (ARMv5) -> AArch64 dynamic recompiler
+// PocketSprout - ARM926 (ARMv5) -> AArch64 dynamic recompiler
 //
 // Design:
 //  * Guest registers live in the ARM926 object (r[0..15]); each translated instruction loads its

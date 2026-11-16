@@ -1,4 +1,4 @@
-package com.hcode91.didjdroid;
+package com.hcode91.pocketsprout;
 
 import android.app.AlertDialog;
 import android.graphics.Bitmap;
@@ -182,7 +182,7 @@ public class EmuView extends View {
 
     private void showMenu() {
         new AlertDialog.Builder(getContext())
-                .setTitle("DidjDroid")
+                .setTitle("PocketSprout")
                 .setItems(new String[] {"Insert cartridge", "Eject cartridge", "Reset", "Show serial console",
                         act.jitWanted() ? "CPU core: JIT (tap to use interpreter)" : "CPU core: interpreter (tap to use JIT)", "Load NAND dump"}, (d, which) -> {
                     if (which == 0) act.pickCart();

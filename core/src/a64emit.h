@@ -1,4 +1,4 @@
-// DidjDroid - minimal AArch64 machine code emitter for the JIT
+// PocketSprout - minimal AArch64 machine code emitter for the JIT
 #pragma once
 #include <cstdint>
 #include <cstring>

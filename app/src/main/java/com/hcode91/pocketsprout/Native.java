@@ -1,8 +1,8 @@
-package com.hcode91.didjdroid;
+package com.hcode91.pocketsprout;
 
 /** JNI entry points into the C++ emulator core. */
 public final class Native {
-    static { System.loadLibrary("didjdroid"); }
+    static { System.loadLibrary("pocketsprout"); }
 
     public static final int W = 320, H = 240;
 

@@ -1,4 +1,4 @@
-// DidjDroid - OpenGL ES library HLE: library tracking and call dispatch
+// PocketSprout - OpenGL ES library HLE: library tracking and call dispatch
 #include "hle.h"
 #include "gles.h"
 #include "didj.h"

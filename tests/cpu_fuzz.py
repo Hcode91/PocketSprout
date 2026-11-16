@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Differential fuzzer: DidjDroid ARM926 core vs Unicorn (QEMU arm926).
+"""Differential fuzzer: PocketSprout ARM926 core vs Unicorn (QEMU arm926).
 Usage: python3 cpu_fuzz.py path/to/libcputest.so [iterations]
 """
 import ctypes, random, sys

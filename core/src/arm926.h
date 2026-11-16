@@ -1,4 +1,4 @@
-// DidjDroid - LeapFrog Didj emulator
+// PocketSprout - LeapFrog Didj emulator
 // ARM926EJ-S CPU core (ARMv5TE, ARM + Thumb, CP15 MMU) - interpreter.
 #pragma once
 #include <cstdint>

@@ -1,7 +1,13 @@
-# DidjDroid
+# PocketSprout
 
 An Android emulator for the **LeapFrog Didj** (2008) handheld, built as full hardware emulation
-of the LF1000 (MagicEyes Pollux) system-on-chip. It boots the real Didj firmware from a NAND dump.
+of the LF1000 (MagicEyes Pollux) system-on-chip. It boots the Didj's own firmware from a NAND dump
+of your console.
+
+> PocketSprout is an independent fan project. It is not affiliated with, endorsed by or connected
+> to LeapFrog Enterprises or any game publisher. "LeapFrog" and "Didj" are trademarks of their
+> respective owners and are used here only to say which hardware the emulator recreates.
+> **No firmware, BIOS or games are included.** Use it only with dumps of a console and cartridges you own.
 
 ## Status
 
@@ -18,17 +24,39 @@ of the LF1000 (MagicEyes Pollux) system-on-chip. It boots the real Didj firmware
 | Serial console | UART with TX interrupts, so userspace logging works (it used to block games) |
 | Speed | ARM64 JIT (default on 64-bit phones): about 4.6× fewer host instructions than the interpreter on boot. MENU → CPU core switches back to the interpreter for troubleshooting |
 
-## Using it
+## Getting started
 
-1. Build the APK (GitHub Actions → *Build* → artifact `DidjDroid-apk`).
-2. On first launch tap the screen and choose your Didj NAND dump
-   (`didj_29f2g08aac_2cda.bin`, 276,824,064 bytes = 256 MB + spare area). It's copied into app storage.
-3. To play a game: **MENU → Insert cartridge** and pick the cart zip / image. The Didj restarts with it inserted;
-   it appears under *My Games*. The cartridge stays inserted until you choose *Eject cartridge*.
-4. Controls: on-screen D-pad, A/B, L/R, Home, Hint, Pause; gamepads and keyboards work too.
-5. **MENU** → *Show serial console* displays the Linux boot log, which is useful for bug reports.
+You need a NAND dump of your own Didj (its firmware chip) and dumps of your own cartridges.
+None are included, and PocketSprout can't run without them.
 
-NAND writes (profiles, settings) are saved back to the app's copy when the app is paused.
+**1. Install.** Download the APK from the latest build (GitHub **Actions** → *Build* → artifact
+`PocketSprout-apk`) and open it on your phone.
+
+**2. Load your NAND dump.** On first launch, tap the screen and choose your dump
+(`didj_29f2g08aac_2cda.bin`, 276,824,064 bytes = 256 MB + spare area). It's copied into the app's
+storage, so you only do this once.
+
+<img src="docs/screenshots/1-first-launch.png" width="600" alt="First launch, asking for the NAND dump">
+
+**3. Play.** The Didj boots its own menus. The on-screen D-pad, A/B, L/R, HOME, HINT and PAUSE
+work like the real buttons, and gamepads and keyboards work too.
+
+<img src="docs/screenshots/2-playing.png" width="600" alt="The player with on-screen controls">
+
+**4. Insert a cartridge.** Tap **MENU → Insert cartridge** and pick the cart zip or image. The
+Didj restarts with it inserted and the game appears under *My Games*. It stays inserted until you
+choose *Eject cartridge*.
+
+<img src="docs/screenshots/3-menu.png" width="320" alt="The MENU">
+
+The MENU also has **Reset**, **Show serial console** (the Linux boot log, useful for bug reports)
+and the **CPU core** switch: the fast JIT is the default on 64-bit phones, and the interpreter is
+there for troubleshooting.
+
+NAND writes (profiles, settings) are saved back to the app's copy whenever the app is paused.
+
+*The screenshots are rendered from the app's own code off-device; the picture on the screen is a
+placeholder drawing, not the Didj's firmware or a game.*
 
 ## Layout
 
@@ -42,6 +70,27 @@ NAND writes (profiles, settings) are saved back to the app's copy when the app i
 - `tools/didjcli.cpp`: desktop test runner (`didjcli nand.bin -f frames -o shot.ppm -k frame:mask -s N`)
 - `tests/cpu_fuzz.py`: differential CPU fuzzer against Unicorn
 
-## Hardware references
+## Credits
 
-LeapFrog's GPL kernel sources (LF1000 `mach-lf1000`, `drivers/lf1000`) and the eLinux Didj pages.
+- **LeapFrog's GPL kernel sources** for the Didj (LF1000 `mach-lf1000`, `drivers/lf1000`) and the
+  **eLinux.org Didj pages**, which document the hardware this emulator recreates.
+- **[Unicorn](https://www.unicorn-engine.org)** is used in testing only, as the reference CPU the
+  ARM926 core is fuzz-tested against. It isn't part of the app.
+- **[Robolectric](https://robolectric.org)** (MIT) renders the tutorial screenshots in tests.
+- The ARM CPU core and the OpenGL ES renderer are shared with PocketPenguin, the GP2X emulator.
+
+## AI use
+
+PocketSprout was built with heavy use of AI. Most of its code and documentation was written by
+Anthropic's Claude, working from my direction, testing and review. It has been tested on real
+firmware and a real cartridge, but it hasn't had the years of use that long-established emulators
+have, so please report anything that doesn't work.
+
+## Licence
+
+PocketSprout is free software: you can redistribute it and/or modify it under the terms of the
+GNU General Public License as published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version. It is distributed WITHOUT ANY WARRANTY; see
+[LICENSE](LICENSE) for the full text.
+
+Copyright (C) 2026 Hcode91

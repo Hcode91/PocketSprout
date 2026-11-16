@@ -1,4 +1,4 @@
-// DidjDroid - LF1000 system emulation
+// PocketSprout - LF1000 system emulation
 #include "didj.h"
 #include <cstdio>
 #include <algorithm>

@@ -1,4 +1,4 @@
-// DidjDroid - ARM926EJ-S interpreter (ARMv5TE)
+// PocketSprout - ARM926EJ-S interpreter (ARMv5TE)
 #include "arm926.h"
 
 namespace didj {

@@ -1,4 +1,4 @@
-// DidjDroid - ARM926 (ARMv5) -> AArch64 dynamic recompiler
+// PocketSprout - ARM926 (ARMv5) -> AArch64 dynamic recompiler
 #pragma once
 #include "arm926.h"
 #include <unordered_map>

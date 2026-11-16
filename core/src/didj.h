@@ -1,4 +1,4 @@
-// DidjDroid - LeapFrog Didj (LF1000 / MagicEyes Pollux) system emulation
+// PocketSprout - LeapFrog Didj (LF1000 / MagicEyes Pollux) system emulation
 #pragma once
 #include "arm926.h"
 #include <string>

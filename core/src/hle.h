@@ -1,4 +1,4 @@
-// DidjDroid - high-level emulation of LeapFrog's OpenGL ES library (libopengles_lite.so)
+// PocketSprout - high-level emulation of LeapFrog's OpenGL ES library (libopengles_lite.so)
 //
 // The Didj's 3D engine (MagicEyes GA3D: programmable geometry engine + triangle setup +
 // rasterizer) is driven entirely from userspace by libopengles_lite.so. Instead of emulating

@@ -1,4 +1,4 @@
-// DidjDroid desktop test runner.
+// PocketSprout desktop test runner.
 // Usage: didjcli <nand.bin> [-c cart] [-f frames] [-o screenshot.ppm] [-t tracefile] [-u max_unknown]
 #include "../core/src/didj.h"
 #include "../core/src/gles.h"

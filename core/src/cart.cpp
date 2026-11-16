@@ -1,4 +1,4 @@
-// DidjDroid - build a virtual Didj cartridge NAND from a FAT filesystem image.
+// PocketSprout - build a virtual Didj cartridge NAND from a FAT filesystem image.
 //
 // A Didj cartridge is a raw NAND chip formatted with UBI, holding a single dynamic volume
 // ("ubi_Cartridge") whose contents are a FAT filesystem (mounted at /Cart). Cartridge dumps

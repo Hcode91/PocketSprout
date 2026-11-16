@@ -1,4 +1,4 @@
-// DidjDroid - OpenGL ES 1.1 software implementation (HLE of libopengles_lite.so)
+// PocketSprout - OpenGL ES 1.1 software implementation (HLE of libopengles_lite.so)
 #include "gles.h"
 #include "hle.h"
 #include "didj.h"
@@ -1147,7 +1147,7 @@ bool GLES::call(int id) {
     case F_glGetError: r = (u32)err; err = 0; break;
     case F_glGetString: {
         u32 nm = a(0);
-        const char* s = nm == 0x1F00 ? "MagicEyes" : nm == 0x1F01 ? "DidjDroid HLE" : nm == 0x1F02 ? "OpenGL ES-CM 1.1" :
+        const char* s = nm == 0x1F00 ? "MagicEyes" : nm == 0x1F01 ? "PocketSprout HLE" : nm == 0x1F02 ? "OpenGL ES-CM 1.1" :
             nm == 0x1F03 ? "GL_OES_byte_coordinates GL_OES_fixed_point GL_OES_single_precision GL_OES_read_format "
                            "GL_OES_compressed_paletted_texture GL_OES_point_size_array GL_OES_point_sprite "
                            "GL_OES_matrix_palette GL_OES_draw_texture GL_OES_query_matrix" : nullptr;

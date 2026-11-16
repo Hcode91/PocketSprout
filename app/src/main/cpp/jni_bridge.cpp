@@ -1,4 +1,4 @@
-// JNI bridge between the Android frontend and the DidjDroid core.
+// JNI bridge between the Android frontend and the PocketSprout core.
 #include <jni.h>
 #include <android/log.h>
 #include <mutex>
@@ -20,7 +20,7 @@ static void append_console(const std::string& s) {
 extern "C" {
 
 JNIEXPORT jstring JNICALL
-Java_com_hcode91_didjdroid_Native_init(JNIEnv* env, jclass, jstring jnand) {
+Java_com_hcode91_pocketsprout_Native_init(JNIEnv* env, jclass, jstring jnand) {
     const char* p = env->GetStringUTFChars(jnand, nullptr);
     std::string path(p);
     env->ReleaseStringUTFChars(jnand, p);
@@ -34,7 +34,7 @@ Java_com_hcode91_didjdroid_Native_init(JNIEnv* env, jclass, jstring jnand) {
         append_console(s);
     };
     g_sys->on_log = [](const std::string& s) {
-        __android_log_print(ANDROID_LOG_INFO, "DidjDroid", "%s", s.c_str());
+        __android_log_print(ANDROID_LOG_INFO, "PocketSprout", "%s", s.c_str());
     };
     std::string err;
     if (!g_sys->load_nand(path, &err)) {
@@ -45,19 +45,19 @@ Java_com_hcode91_didjdroid_Native_init(JNIEnv* env, jclass, jstring jnand) {
 }
 
 JNIEXPORT void JNICALL
-Java_com_hcode91_didjdroid_Native_runFrame(JNIEnv* env, jclass, jintArray pixels) {
+Java_com_hcode91_pocketsprout_Native_runFrame(JNIEnv* env, jclass, jintArray pixels) {
     if (!g_sys) return;
     g_sys->run_frame();
     env->SetIntArrayRegion(pixels, 0, Didj::SCREEN_W * Didj::SCREEN_H, (const jint*)g_sys->framebuffer());
 }
 
 JNIEXPORT void JNICALL
-Java_com_hcode91_didjdroid_Native_setButtons(JNIEnv*, jclass, jint mask) {
+Java_com_hcode91_pocketsprout_Native_setButtons(JNIEnv*, jclass, jint mask) {
     if (g_sys) g_sys->set_buttons((u32)mask);
 }
 
 JNIEXPORT jint JNICALL
-Java_com_hcode91_didjdroid_Native_readAudio(JNIEnv* env, jclass, jshortArray buf) {
+Java_com_hcode91_pocketsprout_Native_readAudio(JNIEnv* env, jclass, jshortArray buf) {
     if (!g_sys) return 0;
     jsize len = env->GetArrayLength(buf);
     jshort* p = env->GetShortArrayElements(buf, nullptr);
@@ -67,7 +67,7 @@ Java_com_hcode91_didjdroid_Native_readAudio(JNIEnv* env, jclass, jshortArray buf
 }
 
 JNIEXPORT jboolean JNICALL
-Java_com_hcode91_didjdroid_Native_saveNand(JNIEnv* env, jclass, jstring jpath) {
+Java_com_hcode91_pocketsprout_Native_saveNand(JNIEnv* env, jclass, jstring jpath) {
     if (!g_sys || !g_sys->nand_base.dirty) return JNI_FALSE;
     const char* p = env->GetStringUTFChars(jpath, nullptr);
     bool ok = g_sys->save_nand(p);
@@ -76,7 +76,7 @@ Java_com_hcode91_didjdroid_Native_saveNand(JNIEnv* env, jclass, jstring jpath) {
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_hcode91_didjdroid_Native_loadCart(JNIEnv* env, jclass, jstring jpath) {
+Java_com_hcode91_pocketsprout_Native_loadCart(JNIEnv* env, jclass, jstring jpath) {
     if (!g_sys) return env->NewStringUTF("emulator not started");
     const char* p = env->GetStringUTFChars(jpath, nullptr);
     std::string path(p);
@@ -87,28 +87,28 @@ Java_com_hcode91_didjdroid_Native_loadCart(JNIEnv* env, jclass, jstring jpath) {
 }
 
 JNIEXPORT jboolean JNICALL
-Java_com_hcode91_didjdroid_Native_setJit(JNIEnv*, jclass, jboolean on) {
+Java_com_hcode91_pocketsprout_Native_setJit(JNIEnv*, jclass, jboolean on) {
     if (!g_sys) return JNI_FALSE;
     return g_sys->set_jit(on == JNI_TRUE) ? JNI_TRUE : JNI_FALSE;
 }
 
 JNIEXPORT jboolean JNICALL
-Java_com_hcode91_didjdroid_Native_jitAvailable(JNIEnv*, jclass) {
+Java_com_hcode91_pocketsprout_Native_jitAvailable(JNIEnv*, jclass) {
     return didj::Jit::available() ? JNI_TRUE : JNI_FALSE;
 }
 
 JNIEXPORT void JNICALL
-Java_com_hcode91_didjdroid_Native_ejectCart(JNIEnv*, jclass) {
+Java_com_hcode91_pocketsprout_Native_ejectCart(JNIEnv*, jclass) {
     if (g_sys) g_sys->eject_cart();
 }
 
 JNIEXPORT void JNICALL
-Java_com_hcode91_didjdroid_Native_reset(JNIEnv*, jclass) {
+Java_com_hcode91_pocketsprout_Native_reset(JNIEnv*, jclass) {
     if (g_sys) g_sys->reset();
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_hcode91_didjdroid_Native_console(JNIEnv* env, jclass) {
+Java_com_hcode91_pocketsprout_Native_console(JNIEnv* env, jclass) {
     std::lock_guard<std::mutex> lk(g_log_mx);
     return env->NewStringUTF(g_console.c_str());
 }

@@ -3,11 +3,11 @@ plugins {
 }
 
 android {
-    namespace 'com.hcode91.didjdroid'
+    namespace 'com.hcode91.pocketsprout'
     compileSdk 34
 
     defaultConfig {
-        applicationId 'com.hcode91.didjdroid'
+        applicationId 'com.hcode91.pocketsprout'
         minSdk 24
         targetSdk 34
         versionCode 1
@@ -18,13 +18,24 @@ android {
         }
     }
 
+    // A fixed key checked into the repo, so every CI build installs over the last one.
+    signingConfigs {
+        shared {
+            storeFile file('pocketsprout-ci.keystore')
+            storePassword 'android'
+            keyAlias 'app'
+            keyPassword 'android'
+        }
+    }
+
     buildTypes {
         debug {
+            signingConfig signingConfigs.shared
             externalNativeBuild { cmake { arguments '-DCMAKE_BUILD_TYPE=Release' } }
         }
         release {
             minifyEnabled false
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.shared
         }
     }
 
@@ -32,8 +43,16 @@ android {
         cmake { path 'src/main/cpp/CMakeLists.txt' }
     }
 
+    testOptions { unitTests { includeAndroidResources = true } }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+}
+
+dependencies {
+    // Only for rendering the tutorial screenshots (gradle :app:testDebugUnitTest --tests '*Screenshots*').
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.14.1'
 }

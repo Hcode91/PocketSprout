@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.18)
-project(didjdroid CXX)
+project(pocketsprout CXX)
 set(CORE ${CMAKE_CURRENT_SOURCE_DIR}/../../../../core/src)
-add_library(didjdroid SHARED
+add_library(pocketsprout SHARED
     jni_bridge.cpp
     ${CORE}/arm926.cpp
     ${CORE}/didj.cpp
@@ -9,6 +9,6 @@ add_library(didjdroid SHARED
     ${CORE}/gles.cpp
     ${CORE}/cart.cpp
     ${CORE}/jit.cpp)
-target_include_directories(didjdroid PRIVATE ${CORE})
-target_compile_options(didjdroid PRIVATE -O3 -fexceptions -Wall -Wno-misleading-indentation -Wno-invalid-offsetof)
-target_link_libraries(didjdroid log)
+target_include_directories(pocketsprout PRIVATE ${CORE})
+target_compile_options(pocketsprout PRIVATE -O3 -fexceptions -Wall -Wno-misleading-indentation -Wno-invalid-offsetof)
+target_link_libraries(pocketsprout log)

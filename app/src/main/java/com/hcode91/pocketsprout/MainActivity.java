@@ -1,4 +1,4 @@
-package com.hcode91.didjdroid;
+package com.hcode91.pocketsprout;
 
 import android.app.Activity;
 import android.content.Intent;
@@ -75,7 +75,6 @@ public class MainActivity extends Activity {
 
     /** Copies the picked cart into app storage. Zips are unpacked: the largest file inside is the cart image. */
     private void importCart(Uri uri) throws Exception {
-        String name = uri.getLastPathSegment() == null ? "" : uri.getLastPathSegment().toLowerCase();
         boolean zip;
         try (InputStream in = getContentResolver().openInputStream(uri)) {
             byte[] sig = new byte[4];
@@ -128,8 +127,8 @@ public class MainActivity extends Activity {
             new Thread(() -> {
                 String err;
                 try { importCart(uri); err = Native.loadCart(cartFile.getAbsolutePath()); }
-                catch (Exception ex) { err = ex.getMessage(); }
-                final String e2 = err;
+                catch (Exception ex) { err = ex.getMessage() != null ? ex.getMessage() : ex.toString(); }
+                final String e2 = err == null ? "" : err;
                 runOnUiThread(() -> {
                     if (!e2.isEmpty()) { cartFile.delete(); Toast.makeText(this, "Cartridge failed: " + e2, Toast.LENGTH_LONG).show(); }
                     else Toast.makeText(this, "Cartridge inserted, restarting Didj", Toast.LENGTH_SHORT).show();
@@ -160,7 +159,7 @@ public class MainActivity extends Activity {
 
     private void startEmu() {
         String err = Native.init(nandFile.getAbsolutePath());
-        if (!err.isEmpty()) {
+        if (err != null && !err.isEmpty()) {
             view.setMessage("NAND load failed: " + err + "\nTap to choose another file");
             nandFile.delete();
             return;
