@@ -150,11 +150,20 @@ Didj::Didj() {
     memset(ram, 0, RAM_SIZE);
     memset(fb, 0, sizeof fb);
     cpu = new ARM926(this);
+    hle = new Hle(this, cpu);
+    hle->log = [this](const std::string& m) { log(m); };
+    cpu->swi_hook = [](ARM926* c, u32 pc, u32 imm, void* u) {
+        Didj* d = static_cast<Didj*>(u);
+        d->hle->on_swi(pc, imm);
+        if (d->on_syscall) d->on_syscall(c, pc, imm);
+    };
+    cpu->trace_user = this;
     rtc_base_secs = (u64)time(nullptr);
     reset();
 }
 
 Didj::~Didj() {
+    delete hle;
     delete cpu;
     delete[] ram;
 }
@@ -187,6 +196,7 @@ void Didj::eject_cart() { nand_cart.data.clear(); nand_cart.num_pages = 0; }
 
 void Didj::reset() {
     cpu->reset();
+    hle->reset();
     shadow = true;
     ic_mode = 0; ic_mask = ~0ull; ic_pend = 0; ic_level = 0; ic_prior = 0;
     for (auto& t : timers) t = Timer();
@@ -1023,6 +1033,41 @@ void Didj::render() {
                     d = 0xFF000000u | (dr << 16) | (dg << 8) | db;
                 }
             }
+        }
+    }
+}
+
+void Didj::present_gl(const u32* src, int w, int h) {
+    // Find the RGB layer used for 3D output (layer 1 on the Didj; fall back to any enabled 16bpp layer)
+    int layer = -1;
+    for (int l : {1, 0}) {
+        u32 base = (0x0C + l * 0x34) >> 2;
+        if ((mlc_regs[base + 6] & (1u << 5)) && mlc_regs[base + 7] == 2) { layer = l; break; }
+    }
+    if (layer < 0) {
+        // The native GL library programs layer 1 as the 3D output; do the same.
+        layer = 1;
+        u32 b = (0x0C + layer * 0x34) >> 2;
+        mlc_regs[b + 0] = (0u << 16) | 319;          // left/right
+        mlc_regs[b + 1] = (0u << 16) | 239;          // top/bottom
+        mlc_regs[b + 6] = 0x4432C030;                // RGB565, layer enabled
+        mlc_regs[b + 7] = 2;                         // hstride
+        mlc_regs[b + 8] = 4096;                      // vstride
+        mlc_regs[b + 11] = 0x01600000;               // 3D framebuffer (GL heap)
+    }
+    u32 base = (0x0C + layer * 0x34) >> 2;
+    u32 addr = mlc_regs[base + 11] & 0x1FFFFFFF;
+    u32 vstride = mlc_regs[base + 8];
+    if (!addr) return;
+    if (vstride == 0 || vstride > 8192) vstride = 4096;
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            u32 pa = addr + y * vstride + x * 2;
+            u8* pg = page_ptr(pa & ~0xFFFu);
+            if (!pg) continue;
+            u32 c = src[y * w + x];
+            u16 v = (u16)((((c >> 19) & 31) << 11) | (((c >> 10) & 63) << 5) | ((c >> 3) & 31));
+            memcpy(pg + (pa & 0xFFF), &v, 2);
         }
     }
 }

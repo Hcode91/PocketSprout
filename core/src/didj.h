@@ -5,6 +5,7 @@
 #include <vector>
 #include <functional>
 #include <map>
+#include "hle.h"
 
 namespace didj {
 
@@ -67,6 +68,9 @@ public:
     void set_buttons(u32 mask);
     void set_touch(bool down, int x, int y);
 
+    // Called by the GL HLE on eglSwapBuffers: writes the frame into the 3D display layer's memory.
+    void present_gl(const u32* argb, int w, int h);
+
     // Audio: interleaved stereo s16 at AUDIO_RATE. Returns frames copied.
     static const int AUDIO_RATE = 32000;
     size_t audio_read(int16_t* out, size_t frames);
@@ -86,6 +90,8 @@ public:
     void write8(u32 pa, u8 v) override;
 
     ARM926* cpu;
+    Hle* hle;
+    std::function<void(ARM926*, u32 pc, u32 imm)> on_syscall;   // debug
     u64 frame_count = 0;
     int log_unknown = 200;      // max unknown-register log lines
     int log_user_io = 0;        // log I/O accesses made from user mode (mmap'd registers)

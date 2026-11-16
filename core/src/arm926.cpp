@@ -443,6 +443,11 @@ s64 ARM926::run(s64 cycles) {
         }
         cur_pc = r[15];
         pc_written = false;
+        if (((u32)(cur_pc - hle_base) < hle_size || cur_pc == hle_watch_pc) && hle_hook &&
+            hle_hook(this, cur_pc, hle_user)) {
+            done++;
+            continue;
+        }
         try {
             if (cpsr & FLAG_T) {
                 u16 insn;
@@ -915,7 +920,7 @@ void ARM926::cp15_write(u32 crn, u32 crm, u32 op1, u32 op2, u32 v) {
         if ((old ^ cp15_control) & (CR_M | CR_S | CR_R)) flush_tlb();
         break;
     }
-    case 2: cp15_ttb = v & 0xFFFFC000; flush_tlb(); break;
+    case 2: cp15_ttb = v & 0xFFFFC000; flush_tlb(); if (ttb_hook) ttb_hook(this, hle_user); break;
     case 3: cp15_dacr = v; flush_tlb(); break;
     case 5: if (op2 == 1) cp15_ifsr = v; else cp15_dfsr = v; break;
     case 6: cp15_far = v; break;
@@ -1277,7 +1282,11 @@ void ARM926::exec_thumb(u16 insn) {
     }
     case 0x1A: case 0x1B: {
         u32 c = (insn >> 8) & 0xF;
-        if (c == 0xF) { exception(0x08, MODE_SVC, cur_pc + 2, false); return; }
+        if (c == 0xF) {
+            if (swi_hook) swi_hook(this, cur_pc, insn & 0xFF, trace_user);
+            exception(0x08, MODE_SVC, cur_pc + 2, false);
+            return;
+        }
         if (c == 0xE) { raise_undefined(); return; }
         if (cond(c)) {
             s32 off = (s32)(int8_t)(insn & 0xFF) << 1;

@@ -53,6 +53,7 @@ public:
     void set_irq(bool level) { irq_line = level; }
     void set_fiq(bool level) { fiq_line = level; }
     bool halted() const { return wfi; }
+    void halt() { wfi = true; }        // sleep until the next interrupt
 
     // Register access (current mode view). r[15] holds address of next instruction.
     u32 r[16];
@@ -79,6 +80,21 @@ public:
     void* trace_user = nullptr;
     void (*undef_hook)(ARM926* cpu, u32 pc, u32 insn, void* user) = nullptr;
     void (*swi_hook)(ARM926* cpu, u32 pc, u32 imm, void* user) = nullptr;
+
+    // High-level-emulation hook: called before executing an instruction whose PC lies in
+    // [hle_base, hle_base+hle_size) or equals hle_watch_pc, while the active TTB is hle_ttb.
+    // Return true if the hook redirected execution (changed r[15]).
+    bool (*hle_hook)(ARM926* cpu, u32 pc, void* user) = nullptr;
+    void* hle_user = nullptr;
+    u32 hle_base = 0, hle_size = 0, hle_watch_pc = 0xFFFFFFFF;
+    // Return from an HLE'd function: r0 = value, PC = LR (with interworking)
+    void hle_return(u32 value) {
+        r[0] = value;
+        u32 lr = r[14];
+        if (lr & 1) { cpsr |= FLAG_T; r[15] = lr & ~1u; } else { cpsr &= ~FLAG_T; r[15] = lr & ~3u; }
+    }
+    // Called when the TTB changes, so the owner can switch the active HLE range per process.
+    void (*ttb_hook)(ARM926* cpu, void* user) = nullptr;
 
     // Memory access (virtual). Throw MemFault on abort.
     u32 vread32(u32 va, bool user);

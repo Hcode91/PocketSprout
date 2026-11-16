@@ -49,7 +49,8 @@ int main(int argc, char** argv) {
     std::string err;
     if (!d.load_nand(nand, &err)) { fprintf(stderr, "NAND: %s\n", err.c_str()); return 1; }
     if (!cart.empty() && !d.load_cart(cart, &err)) { fprintf(stderr, "cart: %s\n", err.c_str()); return 1; }
-    d.cpu->swi_hook = swi_log;
+    d.on_syscall = [](ARM926* c, u32 pc, u32 imm) { swi_log(c, pc, imm, nullptr); };
+    if (getenv("GL_LOG")) d.hle->log_calls = true;
     d.on_uart = [](char c) { fputc(c, stdout); fflush(stdout); };
     if (!tracefile.empty()) { trace_f = fopen(tracefile.c_str(), "w"); d.cpu->trace_hook = trace; }
     auto save = [&](const std::string& path) {
@@ -99,6 +100,11 @@ int main(int argc, char** argv) {
         fclose(o);
         fprintf(stderr, "pcdump base=%08X\n", base);
     }
+    if (getenv("MLC_DUMP")) { // mlc_dump
+        for (u32 a = 0xC0004000; a < 0xC00040A8; a += 4) fprintf(stderr, "MLC+%02X=%08X%s", a & 0xFF, d.read32(a), ((a >> 2) & 3) == 3 ? "\n" : "  ");
+        fprintf(stderr, "\n");
+    }
+    fprintf(stderr, "hle range %08X+%X ttb=%08X\n", d.cpu->hle_base, d.cpu->hle_size, d.cpu->cp15_ttb);
     fprintf(stderr, "final pc=%08X cpsr=%08X\n", d.cpu->r[15], d.cpu->cpsr);
     for (int i = 0; i < 16; i++) fprintf(stderr, "r%d=%08X%s", i, d.cpu->r[i], (i % 4 == 3) ? "\n" : " ");
     return 0;
