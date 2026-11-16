@@ -42,7 +42,14 @@ struct MemFault {
     u32 addr;  // faulting virtual address
 };
 
+class Jit;
+struct JitHelpers;
+class Translator;
+
 class ARM926 {
+    friend class Jit;
+    friend struct JitHelpers;
+    friend class Translator;
 public:
     explicit ARM926(Bus* bus);
     void reset();
@@ -59,6 +66,24 @@ public:
     u32 r[16];
     u32 cpsr;
     u32 spsr;
+    // JIT communication (kept near the start for short offsets)
+    u8 jit_fault = 0;          // set by memory helpers when an access aborted
+    u8 jit_exit = 0;           // set when the current block must stop (e.g. its code was overwritten)
+    u32 jit_tmp[20];           // scratch for multi-register loads etc.
+    s32 jit_budget = 0;
+    MemFault jit_fault_info{0, 0};
+    // Self-modifying-code tracking (installed by the JIT)
+    u8* smc_flags = nullptr;   // one byte per 4 KB RAM page: 1 = holds compiled code
+    u8* smc_ram = nullptr;
+    u32 smc_pages = 0;
+    void (*smc_cb)(void* user, u32 page) = nullptr;
+    void* smc_user = nullptr;
+    inline void smc_check(const u8* host) {
+        if (smc_flags) {
+            size_t pg = (size_t)(host - smc_ram) >> 12;
+            if (pg < smc_pages && smc_flags[pg]) smc_cb(smc_user, (u32)pg);
+        }
+    }
 
     // Banked registers (index by bank)
     u32 bank_r13[6], bank_r14[6], bank_spsr[6];
@@ -162,6 +187,7 @@ private:
     void check_interrupts();
 
     bool cond(u32 c) const;
+    bool cond_ext(u32 c) const;   // out-of-line version for other translation units
     u32 shift_imm(u32 insn, bool* carry);
     u32 shift_reg(u32 insn, bool* carry);
     void data_proc(u32 insn, u32 op2, bool carry);

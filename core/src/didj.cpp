@@ -165,7 +165,19 @@ Didj::Didj() {
     reset();
 }
 
+bool Didj::set_jit(bool on) {
+    if (on && !jit && Jit::available()) {
+        jit = new Jit(cpu, ram, RAM_SIZE);
+        if (!jit->ok()) { delete jit; jit = nullptr; }
+    } else if (!on && jit) {
+        delete jit;
+        jit = nullptr;
+    }
+    return jit != nullptr;
+}
+
 Didj::~Didj() {
+    delete jit;
     delete hle;
     delete cpu;
     delete[] ram;
@@ -221,6 +233,7 @@ void Didj::eject_cart() { nand_cart.data.clear(); nand_cart.num_pages = 0; gpio_
 void Didj::reset() {
     cpu->reset();
     hle->reset();
+    if (jit) jit->flush();
     shadow = true;
     ic_mode = 0; ic_mask = ~0ull; ic_pend = 0; ic_level = 0; ic_prior = 0;
     for (auto& t : timers) t = Timer();
@@ -293,17 +306,17 @@ u8 Didj::read8(u32 pa) {
 }
 void Didj::write32(u32 pa, u32 v) {
     u8* p = page_ptr(pa & ~0xFFFu);
-    if (p) { memcpy(p + (pa & 0xFFC), &v, 4); return; }
+    if (p) { if (jit) jit->note_bus_write((u32)(p - ram)); memcpy(p + (pa & 0xFFC), &v, 4); return; }
     io_write(pa & ~3u, v, 4);
 }
 void Didj::write16(u32 pa, u16 v) {
     u8* p = page_ptr(pa & ~0xFFFu);
-    if (p) { memcpy(p + (pa & 0xFFE), &v, 2); return; }
+    if (p) { if (jit) jit->note_bus_write((u32)(p - ram)); memcpy(p + (pa & 0xFFE), &v, 2); return; }
     io_write(pa & ~1u, v, 2);
 }
 void Didj::write8(u32 pa, u8 v) {
     u8* p = page_ptr(pa & ~0xFFFu);
-    if (p) { p[pa & 0xFFF] = v; return; }
+    if (p) { if (jit) jit->note_bus_write((u32)(p - ram)); p[pa & 0xFFF] = v; return; }
     io_write(pa, v, 1);
 }
 
@@ -1130,7 +1143,8 @@ void Didj::run_frame() {
         u64 n = (frame - done < slice) ? frame - done : slice;
         // ARM926 averages ~1.5 cycles per instruction (cache/memory stalls)
         double t0 = now_s();
-        cpu->run((s64)(n * 2 / 3));
+        if (jit) jit->run((s64)(n * 2 / 3));
+        else cpu->run((s64)(n * 2 / 3));
         double t1 = now_s();
         timers_advance(n);
         dma_advance(n);

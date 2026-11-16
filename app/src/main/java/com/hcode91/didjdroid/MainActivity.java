@@ -166,6 +166,7 @@ public class MainActivity extends Activity {
             return;
         }
         view.setMessage(null);
+        applyJitSetting();
         if (cartFile.exists()) {
             String cerr = Native.loadCart(cartFile.getAbsolutePath());
             if (cerr.isEmpty()) Native.reset();
@@ -236,6 +237,30 @@ public class MainActivity extends Activity {
         stopEmu();
         Native.reset();
         resumeEmu();
+    }
+
+    boolean jitWanted() {
+        return getSharedPreferences("settings", MODE_PRIVATE).getBoolean("jit", true);
+    }
+
+    private void applyJitSetting() {
+        boolean on = Native.setJit(jitWanted());
+        view.setCoreName(on ? "JIT" : "Interpreter");
+    }
+
+    void toggleJit() {
+        if (!Native.jitAvailable()) {
+            Toast.makeText(this, "The fast CPU core needs a 64-bit ARM phone", Toast.LENGTH_LONG).show();
+            return;
+        }
+        boolean want = !jitWanted();
+        getSharedPreferences("settings", MODE_PRIVATE).edit().putBoolean("jit", want).apply();
+        if (started) {
+            stopEmu();
+            applyJitSetting();
+            resumeEmu();
+        }
+        Toast.makeText(this, want ? "Fast CPU core (JIT) on" : "Interpreter (slower, for troubleshooting)", Toast.LENGTH_SHORT).show();
     }
 
     void showConsole() {

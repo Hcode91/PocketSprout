@@ -50,6 +50,8 @@ public class EmuView extends View {
 
     void setMessage(String m) { message = m; postInvalidate(); }
     void setFps(float f) { fps = f; }
+    private String coreName = "";
+    void setCoreName(String n) { coreName = n; postInvalidate(); }
     int getButtons() { return buttons; }
 
     void pushFrame(int[] px) {
@@ -119,7 +121,7 @@ public class EmuView extends View {
 
         if (fps > 0) {
             text.setTextAlign(Paint.Align.LEFT);
-            c.drawText(String.format("%.0f fps", fps), 12, text.getTextSize() + 8, text);
+            c.drawText(String.format("%.0f fps  %s", fps, coreName), 12, text.getTextSize() + 8, text);
             text.setTextAlign(Paint.Align.CENTER);
         }
         if (message != null) {
@@ -181,11 +183,13 @@ public class EmuView extends View {
     private void showMenu() {
         new AlertDialog.Builder(getContext())
                 .setTitle("DidjDroid")
-                .setItems(new String[] {"Insert cartridge", "Eject cartridge", "Reset", "Show serial console", "Load NAND dump"}, (d, which) -> {
+                .setItems(new String[] {"Insert cartridge", "Eject cartridge", "Reset", "Show serial console",
+                        act.jitWanted() ? "CPU core: JIT (tap to use interpreter)" : "CPU core: interpreter (tap to use JIT)", "Load NAND dump"}, (d, which) -> {
                     if (which == 0) act.pickCart();
                     else if (which == 1) act.ejectCart();
                     else if (which == 2) act.resetEmu();
                     else if (which == 3) act.showConsole();
+                    else if (which == 4) act.toggleJit();
                     else act.pickNand();
                 }).show();
     }

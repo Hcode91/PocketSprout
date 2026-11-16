@@ -20,5 +20,8 @@ public final class Native {
     /** Loads a cartridge (FAT image of the cart volume, or raw NAND dump). Empty string = OK. */
     public static native String loadCart(String path);
     public static native void ejectCart();
+    /** Switches the ARM64 recompiler on/off; returns whether it is active. */
+    public static native boolean setJit(boolean on);
+    public static native boolean jitAvailable();
     public static native String console();
 }

@@ -67,6 +67,7 @@ int main(int argc, char** argv) {
     Didj d;
     g_sys = &d;
     d.log_unknown = maxunk;
+    if (getenv("JIT")) fprintf(stderr, "JIT %s\n", d.set_jit(true) ? "enabled" : "unavailable");
     std::string err;
     if (!d.load_nand(nand, &err)) { fprintf(stderr, "NAND: %s\n", err.c_str()); return 1; }
     if (!cart.empty() && !d.load_cart(cart, &err)) { fprintf(stderr, "cart: %s\n", err.c_str()); return 1; }
@@ -117,6 +118,8 @@ int main(int argc, char** argv) {
             fprintf(stderr, "[stat] walks=%llu aborts=%llu flushes=%llu irqs=%llu thumb=%llu slowfetch=%llu\n",
                 (unsigned long long)c->stat_walks, (unsigned long long)c->stat_aborts, (unsigned long long)c->stat_flushes,
                 (unsigned long long)c->stat_irqs, (unsigned long long)c->stat_thumb, (unsigned long long)c->stat_slowfetch);
+            if (d.jit) fprintf(stderr, "[jit] blocks=%llu run=%llu interp=%llu inval=%llu flushes=%llu\n", (unsigned long long)d.jit->blocks_compiled,
+                (unsigned long long)d.jit->blocks_run, (unsigned long long)d.jit->interp_steps, (unsigned long long)d.jit->invalidations, (unsigned long long)d.jit->flushes);
             c->stat_walks = c->stat_aborts = c->stat_flushes = c->stat_irqs = c->stat_thumb = c->stat_slowfetch = 0;
         }
         if (f % 60 == 59) fprintf(stderr, "[frame %d] pc=%08X mode=%02X insns=%llu\n", f + 1, d.cpu->r[15], d.cpu->cpsr & 0x1F,

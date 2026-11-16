@@ -12,12 +12,17 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build desktop runner and CPU test library
         run: |
-          g++ -O2 -std=c++17 -o didjcli tools/didjcli.cpp core/src/didj.cpp core/src/arm926.cpp core/src/hle.cpp core/src/gles.cpp core/src/cart.cpp
+          g++ -O2 -std=c++17 -o didjcli tools/didjcli.cpp core/src/didj.cpp core/src/arm926.cpp core/src/hle.cpp core/src/gles.cpp core/src/cart.cpp core/src/jit.cpp
           g++ -O2 -std=c++17 -shared -fPIC -o libcputest.so tests/cpu_testlib.cpp core/src/arm926.cpp
       - name: CPU differential fuzz test (vs Unicorn ARM926)
         run: |
           pip install unicorn==2.1.4
           python3 tests/cpu_fuzz.py ./libcputest.so 20000
+      - name: JIT differential fuzz test (ARM64 JIT vs interpreter, under qemu)
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q g++-aarch64-linux-gnu qemu-user
+          aarch64-linux-gnu-g++ -std=c++17 -O2 -static -Wno-invalid-offsetof -o jit_fuzz tests/jit_fuzz.cpp core/src/jit.cpp core/src/arm926.cpp
+          qemu-aarch64 ./jit_fuzz 10000
 
   android:
     runs-on: ubuntu-latest

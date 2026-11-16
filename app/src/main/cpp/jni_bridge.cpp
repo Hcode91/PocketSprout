@@ -86,6 +86,17 @@ Java_com_hcode91_didjdroid_Native_loadCart(JNIEnv* env, jclass, jstring jpath) {
     return env->NewStringUTF("");
 }
 
+JNIEXPORT jboolean JNICALL
+Java_com_hcode91_didjdroid_Native_setJit(JNIEnv*, jclass, jboolean on) {
+    if (!g_sys) return JNI_FALSE;
+    return g_sys->set_jit(on == JNI_TRUE) ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_hcode91_didjdroid_Native_jitAvailable(JNIEnv*, jclass) {
+    return didj::Jit::available() ? JNI_TRUE : JNI_FALSE;
+}
+
 JNIEXPORT void JNICALL
 Java_com_hcode91_didjdroid_Native_ejectCart(JNIEnv*, jclass) {
     if (g_sys) g_sys->eject_cart();

@@ -299,13 +299,13 @@ void ARM926::vwrite32(u32 va, u32 v, bool user) {
         u32 m = (va < 0x02000000) ? (va | (cp15_fcse_pid & 0xFE000000)) : va;
         const TLBEntry& e = tlb[(m >> 12) & (TLB_SIZE - 1)];
         if (!(va & 3) && e.valid == 1 && e.tag == (m >> 12) && e.host && (e.perm & (user ? 8 : 2))) {
-            memcpy(e.host + (va & 0xFFF), &v, 4); return;
+            smc_check(e.host); memcpy(e.host + (va & 0xFFF), &v, 4); return;
         }
     }
     ALIGN_CHECK(va, 3);
     va &= ~3u;
     TLBEntry* e = translate(va, true, user, false);
-    if (e->host) { memcpy(e->host + (va & 0xFFF), &v, 4); return; }
+    if (e->host) { smc_check(e->host); memcpy(e->host + (va & 0xFFF), &v, 4); return; }
     bus->write32(e->pa_page + (va & 0xFFF), v);
 }
 void ARM926::vwrite16(u32 va, u16 v, bool user) {
@@ -313,13 +313,13 @@ void ARM926::vwrite16(u32 va, u16 v, bool user) {
         u32 m = (va < 0x02000000) ? (va | (cp15_fcse_pid & 0xFE000000)) : va;
         const TLBEntry& e = tlb[(m >> 12) & (TLB_SIZE - 1)];
         if (!(va & 1) && e.valid == 1 && e.tag == (m >> 12) && e.host && (e.perm & (user ? 8 : 2))) {
-            memcpy(e.host + (va & 0xFFF), &v, 2); return;
+            smc_check(e.host); memcpy(e.host + (va & 0xFFF), &v, 2); return;
         }
     }
     ALIGN_CHECK(va, 1);
     va &= ~1u;
     TLBEntry* e = translate(va, true, user, false);
-    if (e->host) { memcpy(e->host + (va & 0xFFF), &v, 2); return; }
+    if (e->host) { smc_check(e->host); memcpy(e->host + (va & 0xFFF), &v, 2); return; }
     bus->write16(e->pa_page + (va & 0xFFF), v);
 }
 void ARM926::vwrite8(u32 va, u8 v, bool user) {
@@ -327,11 +327,11 @@ void ARM926::vwrite8(u32 va, u8 v, bool user) {
         u32 m = (va < 0x02000000) ? (va | (cp15_fcse_pid & 0xFE000000)) : va;
         const TLBEntry& e = tlb[(m >> 12) & (TLB_SIZE - 1)];
         if (e.valid == 1 && e.tag == (m >> 12) && e.host && (e.perm & (user ? 8 : 2))) {
-            e.host[va & 0xFFF] = v; return;
+            smc_check(e.host); e.host[va & 0xFFF] = v; return;
         }
     }
     TLBEntry* e = translate(va, true, user, false);
-    if (e->host) { e->host[va & 0xFFF] = v; return; }
+    if (e->host) { smc_check(e->host); e->host[va & 0xFFF] = v; return; }
     bus->write8(e->pa_page + (va & 0xFFF), v);
 }
 
@@ -460,6 +460,8 @@ FORCE_INLINE u32 ARM926::shift_imm(u32 insn, bool* carry) {
         return ror32(rm, amt);
     }
 }
+
+bool ARM926::cond_ext(u32 c) const { return cond(c); }
 
 // ---------------------------------------------------------------------------
 // Main loop

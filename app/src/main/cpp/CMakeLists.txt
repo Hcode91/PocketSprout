@@ -7,7 +7,8 @@ add_library(didjdroid SHARED
     ${CORE}/didj.cpp
     ${CORE}/hle.cpp
     ${CORE}/gles.cpp
-    ${CORE}/cart.cpp)
+    ${CORE}/cart.cpp
+    ${CORE}/jit.cpp)
 target_include_directories(didjdroid PRIVATE ${CORE})
-target_compile_options(didjdroid PRIVATE -O3 -fexceptions -Wall -Wno-misleading-indentation)
+target_compile_options(didjdroid PRIVATE -O3 -fexceptions -Wall -Wno-misleading-indentation -Wno-invalid-offsetof)
 target_link_libraries(didjdroid log)

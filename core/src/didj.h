@@ -6,6 +6,7 @@
 #include <functional>
 #include <map>
 #include "hle.h"
+#include "jit.h"
 
 namespace didj {
 
@@ -95,6 +96,8 @@ public:
 
     ARM926* cpu;
     Hle* hle;
+    Jit* jit = nullptr;                 // ARM64 dynamic recompiler (null = interpreter)
+    bool set_jit(bool on);              // returns whether the JIT is active
     std::function<void(ARM926*, u32 pc, u32 imm)> on_syscall;   // debug
     u64 frame_count = 0;
     double prof_cpu = 0, prof_dev = 0, prof_render = 0, prof_gl = 0;   // seconds (debug)

@@ -16,7 +16,7 @@ of the LF1000 (MagicEyes Pollux) system-on-chip. It boots the real Didj firmware
 | 3D graphics (OpenGL ES) | **Working via HLE.** Calls into LeapFrog's `libopengles_lite.so` are trapped and run by a built-in OpenGL ES 1.1 software renderer (`gles.cpp`); the Didj menus render |
 | Cartridges | **Working.** FAT cart images (e.g. `NLR` inside a cart zip) are wrapped in UBI on a virtual cart NAND chip (`cart.cpp`); raw cart NAND dumps also load. Didji Racing: Tiki Tropics boots and plays |
 | Serial console | UART with TX interrupts, so userspace logging works (it used to block games) |
-| Speed | Interpreter only. Boot is CPU-heavy; menus use ~12% of the emulated CPU thanks to the GL HLE |
+| Speed | ARM64 JIT (default on 64-bit phones): about 4.6× fewer host instructions than the interpreter on boot. MENU → CPU core switches back to the interpreter for troubleshooting |
 
 ## Using it
 
@@ -33,6 +33,7 @@ NAND writes (profiles, settings) are saved back to the app's copy when the app i
 ## Layout
 
 - `core/src/arm926.*`: CPU interpreter + MMU
+- `core/src/jit.*`, `a64emit.h`: ARM→ARM64 dynamic recompiler (block chaining, inline TLB, interpreter fallback); checked against the interpreter by `tests/jit_fuzz.cpp`
 - `core/src/hle.*`: tracks where each process maps `libopengles_lite.so`, parses its ELF symbol table and traps `gl*`/`egl*` entry points
 - `core/src/gles.*`: OpenGL ES 1.1 + EGL implementation (transform, lighting, clipping, textured rasteriser, blending, fog)
 - `core/src/didj.*`: LF1000 system: memory map, NAND chip/controller, IRQ controller, timers,
