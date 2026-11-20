@@ -94,3 +94,10 @@ License, or (at your option) any later version. It is distributed WITHOUT ANY WA
 [LICENSE](LICENSE) for the full text.
 
 Copyright (C) 2026 Hcode91
+
+## Starting a cartridge from another app
+
+Launchers and trackers (such as BacklogQuest's home-screen tiles) can play a cartridge directly:
+send `com.hcode91.pocket.LAUNCH_GAME` to the app with the cart file (image or `.zip`) as the
+intent's data, granting read access to it. It's inserted as if picked from the menu and the Didj
+restarts with it. The NAND dump has to be loaded first.

@@ -18,6 +18,11 @@ import java.io.InputStream;
 import java.io.OutputStream;
 
 public class MainActivity extends Activity {
+    /**
+     * The request another app (BacklogQuest's home-screen tiles) sends to play a cart straight away:
+     * the cart file (image or zip) as the intent's data. It's inserted as if picked from the menu.
+     */
+    public static final String ACTION_LAUNCH_GAME = "com.hcode91.pocket.LAUNCH_GAME";
     private static final int PICK_NAND = 1;
     private static final int PICK_CART = 2;
     private File cartFile;
@@ -41,6 +46,18 @@ public class MainActivity extends Activity {
         cartFile = new File(getFilesDir(), "cart.img");
         if (nandFile.exists()) startEmu();
         else view.setMessage("Tap here to choose your Didj NAND dump\n(didj_29f2g08aac_2cda.bin)");
+        if (b == null) launchFrom(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        launchFrom(intent);
+    }
+
+    private void launchFrom(Intent intent) {
+        if (intent == null || !ACTION_LAUNCH_GAME.equals(intent.getAction()) || intent.getData() == null) return;
+        insertCart(intent.getData());
     }
 
     private void hideSystemUi() {
@@ -120,23 +137,7 @@ public class MainActivity extends Activity {
     protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
         if (req == PICK_CART && res == RESULT_OK && data != null) {
-            final Uri uri = data.getData();
-            if (!started) { Toast.makeText(this, "Load a NAND dump first", Toast.LENGTH_LONG).show(); return; }
-            stopEmu();
-            view.setMessage("Loading cartridge...");
-            new Thread(() -> {
-                String err;
-                try { importCart(uri); err = Native.loadCart(cartFile.getAbsolutePath()); }
-                catch (Exception ex) { err = ex.getMessage() != null ? ex.getMessage() : ex.toString(); }
-                final String e2 = err == null ? "" : err;
-                runOnUiThread(() -> {
-                    if (!e2.isEmpty()) { cartFile.delete(); Toast.makeText(this, "Cartridge failed: " + e2, Toast.LENGTH_LONG).show(); }
-                    else Toast.makeText(this, "Cartridge inserted, restarting Didj", Toast.LENGTH_SHORT).show();
-                    view.setMessage(null);
-                    Native.reset();
-                    resumeEmu();
-                });
-            }).start();
+            insertCart(data.getData());
             return;
         }
         if (req != PICK_NAND || res != RESULT_OK || data == null) return;
@@ -154,6 +155,27 @@ public class MainActivity extends Activity {
                 return;
             }
             runOnUiThread(this::startEmu);
+        }).start();
+    }
+
+    /** Copies the cart in, loads it and restarts the Didj with it (from the menu or another app). */
+    private void insertCart(final Uri uri) {
+        if (uri == null) return;
+        if (!started) { Toast.makeText(this, "Load a NAND dump first", Toast.LENGTH_LONG).show(); return; }
+        stopEmu();
+        view.setMessage("Loading cartridge...");
+        new Thread(() -> {
+            String err;
+            try { importCart(uri); err = Native.loadCart(cartFile.getAbsolutePath()); }
+            catch (Exception ex) { err = ex.getMessage() != null ? ex.getMessage() : ex.toString(); }
+            final String e2 = err == null ? "" : err;
+            runOnUiThread(() -> {
+                if (!e2.isEmpty()) { cartFile.delete(); Toast.makeText(this, "Cartridge failed: " + e2, Toast.LENGTH_LONG).show(); }
+                else Toast.makeText(this, "Cartridge inserted, restarting Didj", Toast.LENGTH_SHORT).show();
+                view.setMessage(null);
+                Native.reset();
+                resumeEmu();
+            });
         }).start();
     }
 
